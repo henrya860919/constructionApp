@@ -17,7 +17,8 @@ enum AppConfiguration {
         #if DEBUG
         return URL(string: "http://127.0.0.1:3003/api/v1")!
         #else
-        return URL(string: "https://api.example.com/api/v1")!
+        // Release／TestFlight／App Store：預設正式後端（與 Railway Public URL 一致；若改網域請一併更新）
+        return URL(string: "https://construction-dashboard-backend-production.up.railway.app/api/v1")!
         #endif
     }
 

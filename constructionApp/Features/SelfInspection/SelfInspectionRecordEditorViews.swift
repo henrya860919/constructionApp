@@ -290,6 +290,7 @@ private struct SelfInspectionRecordFormScrollContent: View {
             .padding(20)
             .padding(.bottom, 32)
         }
+        .scrollDismissesKeyboard(.immediately)
         .onChange(of: form.photoPickerFingerprint) { _, _ in
             Task { await form.refreshPhotoPreviews() }
         }
@@ -983,6 +984,7 @@ struct SelfInspectionRecordDetailView: View {
             .padding(20)
             .padding(.bottom, 32)
         }
+        .scrollDismissesKeyboard(.immediately)
     }
 
     private func detailLine(title: String, value: String?) -> some View {

@@ -96,6 +96,7 @@ struct ProjectPickerView: View {
                 }
                 .padding(24)
             }
+            .scrollDismissesKeyboard(.immediately)
         }
         .task {
             await model.load(session: session)

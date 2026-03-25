@@ -116,7 +116,7 @@ struct LoginView: View {
                 .padding(.top, 48)
                 .padding(.bottom, 32)
             }
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.immediately)
         }
     }
 

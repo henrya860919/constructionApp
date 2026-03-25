@@ -622,6 +622,7 @@ struct DefectDetailView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.bottom, 24)
                             }
+                            .scrollDismissesKeyboard(.immediately)
                             .fieldFABScrollIdleTracking($fabScrollIdle)
                             .refreshable {
                                 await model.load(projectId: projectId, defectId: defectId, token: accessToken)
@@ -728,6 +729,7 @@ struct DefectDetailView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 24)
                 }
+                .scrollDismissesKeyboard(.immediately)
             } else {
                 List {
                     ForEach(model.records) { rec in
@@ -1096,6 +1098,7 @@ struct DefectRecordCreateView: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
         .onChange(of: model.photoPickerFingerprint) { _, _ in
             Task { await model.refreshPhotoPreviews() }
@@ -1353,6 +1356,7 @@ struct DefectEditView: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
         .onChange(of: edit.photoPickerFingerprint) { _, _ in
             Task { await edit.refreshPhotoPreviews() }
@@ -1495,6 +1499,7 @@ struct DefectRecordEditView: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
         .onAppear {
             contentText = record.content
@@ -1806,6 +1811,7 @@ struct DefectCreateView: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
         .onChange(of: vm.photoPickerFingerprint) { _, _ in
             Task { await vm.refreshPhotoPreviews() }

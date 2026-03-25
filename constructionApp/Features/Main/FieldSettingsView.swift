@@ -133,6 +133,7 @@ struct FieldSettingsView: View {
             .padding(20)
             .padding(.bottom, 24)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.inline)

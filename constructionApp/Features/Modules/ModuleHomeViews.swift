@@ -27,6 +27,7 @@ struct DailyLogHomeView: View {
             }
             .padding(24)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
     }
 }

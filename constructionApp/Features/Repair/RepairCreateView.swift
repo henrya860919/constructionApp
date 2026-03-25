@@ -312,6 +312,7 @@ struct RepairCreateView: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
         .onChange(of: vm.photoPickerFingerprint) { _, _ in
             Task { await vm.refreshPhotoPreviews() }
