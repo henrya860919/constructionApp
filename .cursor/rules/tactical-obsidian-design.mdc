@@ -1,0 +1,138 @@
+---
+description: constructionApp UI — Tactical Obsidian 設計系統（色階、字型、12px 圓角、元件、禁忌）
+globs: constructionApp/**/*.swift
+alwaysApply: false
+---
+
+# Tactical Obsidian — iOS（SwiftUI）設計規範
+
+本檔為 **constructionApp** 的視覺與元件準則，與創意主軸 **The Tactical Obsidian** 對齊：深色火山玻璃＋液態金屬感、編輯台級留白、主色點到為止。
+
+---
+
+## 1. 創意主軸（North Star）
+
+- 避免通用 SaaS 儀表板感；介面應像 **高精度儀器／高階編輯台**。
+- 用 **意圖性層疊與色階深度** 取代「格子＋框線」模板。
+- **全站 primitive 統一圓角：`12pt`（ROUND_TWELVE）** — 卡片、按鈕、主要浮動元件、導航容器等（與「圓形 FAB」區隔見 §5）。
+- 留白要足（luxury of space）；**Safety Orange 是雷射筆，不是油漆刷**。
+
+---
+
+## 2. 色彩與色階架構
+
+### 2.1 核心色票（sRGB 參考）
+
+| Token | Hex | 用途 |
+|--------|-----|------|
+| `surface` | `#0B0E11` | 頁面基底（Obsidian） |
+| `surface-container-low` | `#101417` | 主要分區／區塊背景 |
+| `surface-container` | `#161A1E` | 卡片、列表列容器 |
+| `surface-container-highest` | `#22262B` | 浮起層、強調容器 |
+| `surface-container-lowest` | 接近純黑凹面 | 輸入區「陷入」基底（實作可略深於 low） |
+| `primary` | `#FF915D` | Safety Orange — CTA、關鍵聚焦 |
+| `primary-container` | `#FF7936` | 漸層末端／較深主色 |
+| `on-primary-fixed` | 偏白 | 主按鈕上文字 |
+| `outline-variant` | `#45484C` | Ghost border 基色（見 §4） |
+
+### 2.2 「無線條」規則（No-Line）
+
+- **禁止**以 **1px 實線邊框** 作為區塊／版面的主要分割手段。
+- 結構靠 **背景色階差**（例如 `surface` 上疊 `surface-container-low`）定義層次。
+- 若需無障礙邊界：僅允許 **Ghost border**（§4），且為低存在感「玻璃邊反光」。
+
+### 2.3 玻璃與漸層
+
+- 浮層（modal、強調卡片、工具提示感容器）：可採 **半透明 surface 變體 + `Material` / blur（約 12–20pt 視覺等效）**。
+- **主 CTA／Hero**：**線性漸層** `primary` → `primary-container`，增加液態金屬光澤，避免單色平塗。
+
+---
+
+## 3. 字型：Space Grotesk（全站）
+
+- **全 App 優先使用 Space Grotesk**（需將字型檔加入專案並在 Info.plist 註冊；若尚未嵌入，過渡期可標註 TODO，但新畫面不得新增與系統混用的新風格）。
+- **Display / Headline**：大標、關鍵數據；Headline **字距緊**（約 **-0.02em**，依字級換算為 `kerning`）。
+- **Body**：說明與內文；**行高約 1.6**。
+- **Label（功能階層）**：後設資料、欄位標籤 — **全大寫**、**字距約 +0.05em**，類工程圖註記。
+- **數據／ID／時間戳**：若需等寬對齊，可使用 **Space Grotesk 的 tabular 變體**或 **SF Mono** 僅限於「原始資料流」情境，並在檔案註解說明理由。
+
+---
+
+## 4. 深度、陰影與 Ghost border
+
+### 4.1 層次原則
+
+- 預設 **不靠傳統灰陰影**；**較淺的 surface token 疊在較深底上**即形成抬起感。
+
+### 4.2 高浮起元件（FAB、覆蓋層）
+
+- **環境陰影**（方向性參考）：**blur 約 40pt**、**不透明度約 6%**；色偏 **primary 或 surface-tint**，模擬光在曜石中的折射（實作可用 `Color.primary` 或品牌橘的極淡混合，避免純灰）。
+
+### 4.3 Ghost border
+
+- 僅在對比不足或無障礙必要時使用。
+- `outline-variant` **#45484C @ 15% opacity**，沿 **12pt 圓角** 邊緣，呈現玻璃邊「微反光」，而非硬框。
+
+---
+
+## 5. 元件實作要點（SwiftUI）
+
+### 5.1 圓角
+
+- 統一 **`RoundedRectangle(cornerRadius: 12, style: .continuous)`**（或設計 token `ROUND_TWELVE = 12`）。
+- **禁止**將 **12pt 圓角卡片**與 **全圓 pill 卡片**混用於同一層級；**pill／膠囊保留給小型篩選 Chip、部分次要標籤**（若產品另有 FAB 規格，FAB 依本規為 **12pt 圓角方塊＋主色填滿**，與圓形區隔）。
+
+### 5.2 按鈕
+
+- **Primary**：`primary` → `primary-container` 漸層、**`on-primary-fixed` 文字**、**12pt 圓角**（非預設膠囊大圓）。
+- **Secondary**：幽靈／低填充；**outline-variant @ ~20% opacity** 邊、文字 `primary`。
+
+### 5.3 卡片與列表
+
+- **禁止**用 **Divider / 1px 線** 作為列與列之間的主分割。
+- 改用 **垂直間距（如 16pt）** 或 **交替背景**（`surface-container-low` / `surface-container`）區分行。
+
+### 5.4 Chips
+
+- 容器偏亮（`surface-bright` 語意：可比 `surface-container` 再淺一階或帶透明）；字型用 **Label-MD**。
+
+### 5.5 輸入
+
+- 背景：**`surface-container-lowest` 類凹面**。
+- 焦點：**僅底部 2pt 主色指示條**（Safety Orange），避免整圈粗邊框。
+
+### 5.6 戰術數據讀數（Tactical readout）
+
+- **Display 級數字 + Label-SM 技術說明**；外層可玻璃化容器；適用儀表、查驗數值、關鍵 KPI。
+
+---
+
+## 6. Do / Don’t 檢查清單
+
+### Do
+
+- 非對稱與單邊對齊的編排（左文右圖／數據可溢出視覺權重）。
+- 主色極省；用色階與字階建立層次。
+- 巢狀 12pt 圓角（區塊內再疊卡片時仍維持語意一致）。
+- 畫面擁擠時 **加大 spacing token**（例如由 8 → 12）。
+
+### Don’t
+
+- **不要**用 1px 白／灰實線當主結構分割。
+- **不要**用標準中性灰大面積 drop shadow。
+- **不要**讓單屏資訊過載；寧可加深色階層級或分頁／分段。
+
+---
+
+## 7. 與既有程式對齊（migration 備註）
+
+- 專案內若仍有 **Tactical Glass** 遺留（例如 **#FF6B00**、**4–8pt 圓角**、**圓形 FAB**、**SF 為主字型**），新功能與改版畫面應 **優先改為本檔規格**；大改可排程集中替換 `TacticalGlassTheme` token 與共用元件。
+
+---
+
+## 8. 參考實作位置
+
+- 色票與共用元件：`constructionApp/Core/Design/`
+- 報修等領域畫面：`constructionApp/Features/`
+
+新增畫面時請讀本檔，並遵守 **theme-support 等級的語意**：背景／文字／邊框應可由 token 衍生，避免在業務 View 內硬編碼 `#RRGGBB`（除非品牌色與本表一致且集中定義在 theme）。
