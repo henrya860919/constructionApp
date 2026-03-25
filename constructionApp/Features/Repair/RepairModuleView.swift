@@ -854,6 +854,8 @@ final class RepairEditViewModel {
     var committedFileAttachments: [(id: String, fileName: String)] = []
     var photoPickerItems: [PhotosPickerItem] = []
     var photoPreviewImages: [UIImage] = []
+    /// 相機拍攝（JPEG），與相簿選取分開儲存；預覽順序為相簿在前、拍照在後。
+    var cameraPhotoJPEGs: [Data] = []
     var extraFiles: [(data: Data, name: String, mime: String)] = []
     var isLoading = false
     var isSaving = false
@@ -864,7 +866,11 @@ final class RepairEditViewModel {
     }
 
     var remainingPhotoSlots: Int {
-        max(0, 30 - committedPhotoIds.count - photoPickerItems.count)
+        max(0, 30 - committedPhotoIds.count - photoPickerItems.count - cameraPhotoJPEGs.count)
+    }
+
+    var mergedLocalPhotoPreviews: [UIImage] {
+        PhotoPickerPreviewLoader.mergedLocalPreviews(pickerUIImages: photoPreviewImages, cameraJPEGs: cameraPhotoJPEGs)
     }
 
     var remainingFileSlots: Int {
@@ -879,6 +885,23 @@ final class RepairEditViewModel {
         guard photoPickerItems.indices.contains(index) else { return }
         photoPickerItems.remove(at: index)
         Task { await refreshPhotoPreviews() }
+    }
+
+    func appendCameraPhoto(_ image: UIImage) {
+        guard remainingPhotoSlots > 0,
+              let data = FieldCameraImageEncoding.jpegData(from: image) else { return }
+        cameraPhotoJPEGs.append(data)
+    }
+
+    func removeMergedLocalPhoto(at index: Int) {
+        let pickerCount = photoPreviewImages.count
+        if index < pickerCount {
+            removePhotoPickerItem(at: index)
+        } else {
+            let ci = index - pickerCount
+            guard cameraPhotoJPEGs.indices.contains(ci) else { return }
+            cameraPhotoJPEGs.remove(at: ci)
+        }
     }
 
     func load(repair: RepairDetailDTO) {
@@ -896,6 +919,7 @@ final class RepairEditViewModel {
         committedFileAttachments = repair.attachments?.map { ($0.id, $0.fileName) } ?? []
         photoPickerItems = []
         photoPreviewImages = []
+        cameraPhotoJPEGs = []
         extraFiles = []
     }
 
@@ -938,6 +962,7 @@ final class RepairEditViewModel {
         do {
             var newPhotoIds: [String] = []
             for item in photoPickerItems {
+                guard newPhotoIds.count < 30 else { break }
                 guard let data = try await item.loadTransferable(type: Data.self) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "photo.\(ext)"
@@ -949,6 +974,19 @@ final class RepairEditViewModel {
                     fileData: data,
                     fileName: fname,
                     mimeType: mime,
+                    category: "repair_photo"
+                )
+                newPhotoIds.append(up.id)
+            }
+            for jpeg in cameraPhotoJPEGs {
+                guard newPhotoIds.count < 30 else { break }
+                let up = try await APIService.uploadProjectFile(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    fileData: jpeg,
+                    fileName: "camera.jpg",
+                    mimeType: "image/jpeg",
                     category: "repair_photo"
                 )
                 newPhotoIds.append(up.id)
@@ -1018,6 +1056,7 @@ struct RepairEditView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm = RepairEditViewModel()
     @State private var showDocImporter = false
+    @State private var showCamera = false
 
     var body: some View {
         @Bindable var edit = vm
@@ -1087,27 +1126,23 @@ struct RepairEditView: View {
                         FieldFormPhotoStrip(
                             accessToken: accessToken,
                             remotePhotoIds: edit.committedPhotoIds,
-                            localPreviewImages: edit.photoPreviewImages,
+                            localPreviewImages: edit.mergedLocalPhotoPreviews,
                             onRemoveRemote: { id in edit.committedPhotoIds.removeAll { $0 == id } },
-                            onRemoveLocal: { index in edit.removePhotoPickerItem(at: index) }
+                            onRemoveLocal: { index in edit.removeMergedLocalPhoto(at: index) }
                         )
-                        if edit.remainingPhotoSlots > 0 {
-                            PhotosPicker(
-                                selection: $edit.photoPickerItems,
-                                maxSelectionCount: min(12, edit.remainingPhotoSlots),
-                                matching: .images,
-                                photoLibrary: .shared()
-                            ) {
-                                Label("從相簿新增", systemImage: "photo.on.rectangle.angled")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                            }
-                        } else {
+                        FieldPhotoLibraryAndCameraButtons(
+                            photoPickerItems: $edit.photoPickerItems,
+                            maxPickerSelection: min(12, edit.remainingPhotoSlots),
+                            remainingSlots: edit.remainingPhotoSlots,
+                            showCamera: $showCamera,
+                            photoLibraryTitle: "從相簿新增"
+                        )
+                        if edit.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
                                 .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         }
-                        Text("照片 \(edit.committedPhotoIds.count + edit.photoPickerItems.count)／30")
+                        Text("照片 \(edit.committedPhotoIds.count + edit.photoPickerItems.count + edit.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
                     }
@@ -1182,6 +1217,12 @@ struct RepairEditView: View {
         .onChange(of: edit.photoPickerFingerprint) { _, _ in
             Task { await edit.refreshPhotoPreviews() }
         }
+        .sheet(isPresented: $showCamera) {
+            FieldCameraImagePicker(isPresented: $showCamera) { image in
+                edit.appendCameraPhoto(image)
+            }
+            .ignoresSafeArea()
+        }
         .fileImporter(
             isPresented: $showDocImporter,
             allowedContentTypes: [.pdf, .plainText, .data, .image],
@@ -1240,6 +1281,7 @@ final class RepairRecordCreateViewModel {
     var contentText = ""
     var photoPickerItems: [PhotosPickerItem] = []
     var photoPreviewImages: [UIImage] = []
+    var cameraPhotoJPEGs: [Data] = []
     var isSubmitting = false
     var errorMessage: String?
 
@@ -1248,7 +1290,11 @@ final class RepairRecordCreateViewModel {
     }
 
     var remainingPhotoSlots: Int {
-        max(0, 30 - photoPickerItems.count)
+        max(0, 30 - photoPickerItems.count - cameraPhotoJPEGs.count)
+    }
+
+    var mergedLocalPhotoPreviews: [UIImage] {
+        PhotoPickerPreviewLoader.mergedLocalPreviews(pickerUIImages: photoPreviewImages, cameraJPEGs: cameraPhotoJPEGs)
     }
 
     func refreshPhotoPreviews() async {
@@ -1259,6 +1305,23 @@ final class RepairRecordCreateViewModel {
         guard photoPickerItems.indices.contains(index) else { return }
         photoPickerItems.remove(at: index)
         Task { await refreshPhotoPreviews() }
+    }
+
+    func appendCameraPhoto(_ image: UIImage) {
+        guard remainingPhotoSlots > 0,
+              let data = FieldCameraImageEncoding.jpegData(from: image) else { return }
+        cameraPhotoJPEGs.append(data)
+    }
+
+    func removeMergedLocalPhoto(at index: Int) {
+        let pickerCount = photoPreviewImages.count
+        if index < pickerCount {
+            removePhotoPickerItem(at: index)
+        } else {
+            let ci = index - pickerCount
+            guard cameraPhotoJPEGs.indices.contains(ci) else { return }
+            cameraPhotoJPEGs.remove(at: ci)
+        }
     }
 
     func submit(projectId: String, repairId: String, token: String) async -> Bool {
@@ -1287,6 +1350,19 @@ final class RepairRecordCreateViewModel {
                     fileData: data,
                     fileName: fname,
                     mimeType: mime,
+                    category: "repair_record"
+                )
+                attachmentIds.append(up.id)
+            }
+            for jpeg in cameraPhotoJPEGs {
+                guard attachmentIds.count < 30 else { break }
+                let up = try await APIService.uploadProjectFile(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    fileData: jpeg,
+                    fileName: "camera.jpg",
+                    mimeType: "image/jpeg",
                     category: "repair_record"
                 )
                 attachmentIds.append(up.id)
@@ -1334,6 +1410,7 @@ struct RepairRecordCreateView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var createModel = RepairRecordCreateViewModel()
+    @State private var showCamera = false
 
     var body: some View {
         @Bindable var model = createModel
@@ -1374,27 +1451,23 @@ struct RepairRecordCreateView: View {
                         FieldFormPhotoStrip(
                             accessToken: accessToken,
                             remotePhotoIds: [],
-                            localPreviewImages: model.photoPreviewImages,
+                            localPreviewImages: model.mergedLocalPhotoPreviews,
                             onRemoveRemote: { _ in },
-                            onRemoveLocal: { index in model.removePhotoPickerItem(at: index) }
+                            onRemoveLocal: { index in model.removeMergedLocalPhoto(at: index) }
                         )
-                        if model.remainingPhotoSlots > 0 {
-                            PhotosPicker(
-                                selection: $model.photoPickerItems,
-                                maxSelectionCount: min(12, model.remainingPhotoSlots),
-                                matching: .images,
-                                photoLibrary: .shared()
-                            ) {
-                                Label("從相簿新增", systemImage: "photo.on.rectangle.angled")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                            }
-                        } else {
+                        FieldPhotoLibraryAndCameraButtons(
+                            photoPickerItems: $model.photoPickerItems,
+                            maxPickerSelection: min(12, model.remainingPhotoSlots),
+                            remainingSlots: model.remainingPhotoSlots,
+                            showCamera: $showCamera,
+                            photoLibraryTitle: "從相簿新增"
+                        )
+                        if model.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
                                 .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         }
-                        Text("照片 \(model.photoPickerItems.count)／30")
+                        Text("照片 \(model.photoPickerItems.count + model.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
                     }
@@ -1426,6 +1499,12 @@ struct RepairRecordCreateView: View {
         .onChange(of: model.photoPickerFingerprint) { _, _ in
             Task { await model.refreshPhotoPreviews() }
         }
+        .sheet(isPresented: $showCamera) {
+            FieldCameraImagePicker(isPresented: $showCamera) { image in
+                model.appendCameraPhoto(image)
+            }
+            .ignoresSafeArea()
+        }
         .navigationTitle("新增報修紀錄")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
@@ -1451,15 +1530,21 @@ struct RepairRecordEditView: View {
     @State private var committedPhotoIds: [String] = []
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var photoPreviewImages: [UIImage] = []
+    @State private var cameraPhotoJPEGs: [Data] = []
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showCamera = false
 
     private var photoPickerFingerprint: String {
         PhotoPickerPreviewLoader.fingerprint(for: photoPickerItems)
     }
 
     private var remainingPhotoSlots: Int {
-        max(0, 30 - committedPhotoIds.count - photoPickerItems.count)
+        max(0, 30 - committedPhotoIds.count - photoPickerItems.count - cameraPhotoJPEGs.count)
+    }
+
+    private var mergedLocalPhotoPreviews: [UIImage] {
+        PhotoPickerPreviewLoader.mergedLocalPreviews(pickerUIImages: photoPreviewImages, cameraJPEGs: cameraPhotoJPEGs)
     }
 
     private func removePhotoPickerItem(at index: Int) {
@@ -1467,6 +1552,23 @@ struct RepairRecordEditView: View {
         photoPickerItems.remove(at: index)
         Task {
             photoPreviewImages = await PhotoPickerPreviewLoader.uiImages(from: photoPickerItems)
+        }
+    }
+
+    private func appendCameraPhoto(_ image: UIImage) {
+        guard remainingPhotoSlots > 0,
+              let data = FieldCameraImageEncoding.jpegData(from: image) else { return }
+        cameraPhotoJPEGs.append(data)
+    }
+
+    private func removeMergedLocalPhoto(at index: Int) {
+        let pickerCount = photoPreviewImages.count
+        if index < pickerCount {
+            removePhotoPickerItem(at: index)
+        } else {
+            let ci = index - pickerCount
+            guard cameraPhotoJPEGs.indices.contains(ci) else { return }
+            cameraPhotoJPEGs.remove(at: ci)
         }
     }
 
@@ -1506,27 +1608,23 @@ struct RepairRecordEditView: View {
                         FieldFormPhotoStrip(
                             accessToken: accessToken,
                             remotePhotoIds: committedPhotoIds,
-                            localPreviewImages: photoPreviewImages,
+                            localPreviewImages: mergedLocalPhotoPreviews,
                             onRemoveRemote: { id in committedPhotoIds.removeAll { $0 == id } },
-                            onRemoveLocal: { index in removePhotoPickerItem(at: index) }
+                            onRemoveLocal: { index in removeMergedLocalPhoto(at: index) }
                         )
-                        if remainingPhotoSlots > 0 {
-                            PhotosPicker(
-                                selection: $photoPickerItems,
-                                maxSelectionCount: min(12, remainingPhotoSlots),
-                                matching: .images,
-                                photoLibrary: .shared()
-                            ) {
-                                Label("從相簿新增", systemImage: "photo.on.rectangle.angled")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                            }
-                        } else {
+                        FieldPhotoLibraryAndCameraButtons(
+                            photoPickerItems: $photoPickerItems,
+                            maxPickerSelection: min(12, remainingPhotoSlots),
+                            remainingSlots: remainingPhotoSlots,
+                            showCamera: $showCamera,
+                            photoLibraryTitle: "從相簿新增"
+                        )
+                        if remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
                                 .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         }
-                        Text("照片 \(committedPhotoIds.count + photoPickerItems.count)／30")
+                        Text("照片 \(committedPhotoIds.count + photoPickerItems.count + cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
                     }
@@ -1560,6 +1658,12 @@ struct RepairRecordEditView: View {
                 photoPreviewImages = await PhotoPickerPreviewLoader.uiImages(from: photoPickerItems)
             }
         }
+        .sheet(isPresented: $showCamera) {
+            FieldCameraImagePicker(isPresented: $showCamera) { image in
+                appendCameraPhoto(image)
+            }
+            .ignoresSafeArea()
+        }
         .navigationTitle("編輯報修紀錄")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
@@ -1584,6 +1688,7 @@ struct RepairRecordEditView: View {
         do {
             var newIds: [String] = []
             for item in photoPickerItems {
+                guard newIds.count < 30 else { break }
                 guard let data = try await item.loadTransferable(type: Data.self) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "record.\(ext)"
@@ -1595,6 +1700,19 @@ struct RepairRecordEditView: View {
                     fileData: data,
                     fileName: fname,
                     mimeType: mime,
+                    category: "repair_record"
+                )
+                newIds.append(up.id)
+            }
+            for jpeg in cameraPhotoJPEGs {
+                guard newIds.count < 30 else { break }
+                let up = try await APIService.uploadProjectFile(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: accessToken,
+                    projectId: projectId,
+                    fileData: jpeg,
+                    fileName: "camera.jpg",
+                    mimeType: "image/jpeg",
                     category: "repair_record"
                 )
                 newIds.append(up.id)

@@ -85,13 +85,45 @@ final class SelfInspectionRecordFormState {
     var committedPhotoIds: [String] = []
     var photoPickerItems: [PhotosPickerItem] = []
     var photoPreviewImages: [UIImage] = []
+    var cameraPhotoJPEGs: [Data] = []
 
     var photoPickerFingerprint: String {
         PhotoPickerPreviewLoader.fingerprint(for: photoPickerItems)
     }
 
+    var remainingPhotoSlots: Int {
+        max(0, 30 - committedPhotoIds.count - photoPickerItems.count - cameraPhotoJPEGs.count)
+    }
+
+    var mergedLocalPhotoPreviews: [UIImage] {
+        PhotoPickerPreviewLoader.mergedLocalPreviews(pickerUIImages: photoPreviewImages, cameraJPEGs: cameraPhotoJPEGs)
+    }
+
     func refreshPhotoPreviews() async {
         photoPreviewImages = await PhotoPickerPreviewLoader.uiImages(from: photoPickerItems)
+    }
+
+    func removePhotoPickerItem(at index: Int) {
+        guard photoPickerItems.indices.contains(index) else { return }
+        photoPickerItems.remove(at: index)
+        Task { await refreshPhotoPreviews() }
+    }
+
+    func appendCameraPhoto(_ image: UIImage) {
+        guard remainingPhotoSlots > 0,
+              let data = FieldCameraImageEncoding.jpegData(from: image) else { return }
+        cameraPhotoJPEGs.append(data)
+    }
+
+    func removeMergedLocalPhoto(at index: Int) {
+        let pickerCount = photoPreviewImages.count
+        if index < pickerCount {
+            removePhotoPickerItem(at: index)
+        } else {
+            let ci = index - pickerCount
+            guard cameraPhotoJPEGs.indices.contains(ci) else { return }
+            cameraPhotoJPEGs.remove(at: ci)
+        }
     }
 
     func apply(detail: SelfInspectionRecordDetailDTO) {
@@ -109,6 +141,7 @@ final class SelfInspectionRecordFormState {
         committedPhotoIds = detail.filledPayload?.photoAttachmentIds ?? []
         photoPickerItems = []
         photoPreviewImages = []
+        cameraPhotoJPEGs = []
         itemResults = [:]
         if let entries = detail.filledPayload?.items {
             for (key, row) in entries {

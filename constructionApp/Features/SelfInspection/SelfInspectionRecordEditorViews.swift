@@ -98,11 +98,13 @@ private func mimeForSelfInspectionImage(data: Data, fallbackExtension: String) -
 private func uploadSelfInspectionPickerPhotos(
     projectId: String,
     token: String,
-    items: [PhotosPickerItem]
+    items: [PhotosPickerItem],
+    maxTotal: Int
 ) async throws -> [String] {
     var ids: [String] = []
-    ids.reserveCapacity(items.count)
+    ids.reserveCapacity(min(items.count, maxTotal))
     for item in items {
+        guard ids.count < maxTotal else { break }
         guard let data = try await item.loadTransferable(type: Data.self) else { continue }
         let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
         let fname = "photo.\(ext)"
@@ -121,6 +123,29 @@ private func uploadSelfInspectionPickerPhotos(
     return ids
 }
 
+private func uploadSelfInspectionCameraJPEGs(
+    projectId: String,
+    token: String,
+    jpegs: [Data],
+    maxCount: Int
+) async throws -> [String] {
+    var ids: [String] = []
+    for jpeg in jpegs {
+        guard ids.count < maxCount else { break }
+        let up = try await APIService.uploadProjectFile(
+            baseURL: AppConfiguration.apiRootURL,
+            token: token,
+            projectId: projectId,
+            fileData: jpeg,
+            fileName: "camera.jpg",
+            mimeType: "image/jpeg",
+            category: "self_inspection_photo"
+        )
+        ids.append(up.id)
+    }
+    return ids
+}
+
 // MARK: - Shared form scroll
 
 private struct SelfInspectionRecordFormScrollContent: View {
@@ -129,10 +154,7 @@ private struct SelfInspectionRecordFormScrollContent: View {
     let accessToken: String
     @Bindable var form: SelfInspectionRecordFormState
     @Binding var submitError: String?
-
-    private var remainingPhotoSlots: Int {
-        max(0, 30 - form.committedPhotoIds.count - form.photoPickerItems.count)
-    }
+    @Binding var showCamera: Bool
 
     var body: some View {
         let header = hub.template.headerConfig
@@ -236,54 +258,30 @@ private struct SelfInspectionRecordFormScrollContent: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
 
-                        if !form.committedPhotoIds.isEmpty {
-                            let cols = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
-                            LazyVGrid(columns: cols, spacing: 10) {
-                                ForEach(form.committedPhotoIds, id: \.self) { attId in
-                                    ZStack(alignment: .topTrailing) {
-                                        AuthenticatedRemoteImage(apiPath: "/api/v1/files/\(attId)", accessToken: accessToken)
-                                            .aspectRatio(1, contentMode: .fill)
-                                            .frame(minHeight: 88)
-                                            .clipped()
-                                            .clipShape(RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous))
-                                        Button {
-                                            form.committedPhotoIds.removeAll { $0 == attId }
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .symbolRenderingMode(.palette)
-                                                .foregroundStyle(.white, .black.opacity(0.55))
-                                        }
-                                        .padding(4)
-                                        .accessibilityLabel("移除照片")
-                                    }
-                                }
-                            }
-                        }
+                        FieldFormPhotoStrip(
+                            accessToken: accessToken,
+                            remotePhotoIds: form.committedPhotoIds,
+                            localPreviewImages: form.mergedLocalPhotoPreviews,
+                            onRemoveRemote: { id in form.committedPhotoIds.removeAll { $0 == id } },
+                            onRemoveLocal: { index in form.removeMergedLocalPhoto(at: index) }
+                        )
 
-                        if remainingPhotoSlots > 0 {
-                            PhotosPicker(
-                                selection: $form.photoPickerItems,
-                                maxSelectionCount: min(12, remainingPhotoSlots),
-                                matching: .images,
-                                photoLibrary: .shared()
-                            ) {
-                                Label("從相簿選擇", systemImage: "photo.on.rectangle.angled")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                            }
-                        } else {
+                        FieldPhotoLibraryAndCameraButtons(
+                            photoPickerItems: $form.photoPickerItems,
+                            maxPickerSelection: min(12, form.remainingPhotoSlots),
+                            remainingSlots: form.remainingPhotoSlots,
+                            showCamera: $showCamera,
+                            photoLibraryTitle: "從相簿選擇"
+                        )
+                        if form.remainingPhotoSlots <= 0 {
                             Text("已達 30 張上限")
                                 .font(.caption)
                                 .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         }
 
-                        Text("已選 \(form.committedPhotoIds.count + form.photoPickerItems.count)／30")
+                        Text("已選 \(form.committedPhotoIds.count + form.photoPickerItems.count + form.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
                             .foregroundStyle(.tertiary)
-
-                        if !form.photoPreviewImages.isEmpty {
-                            TacticalPhotoAlbumGrid(images: form.photoPreviewImages, columnCount: 3, spacing: 10)
-                        }
                     }
                 }
             }
@@ -460,6 +458,7 @@ struct SelfInspectionCreateRecordView: View {
     @State private var form = SelfInspectionRecordFormState()
     @State private var isSubmitting = false
     @State private var submitError: String?
+    @State private var showCamera = false
 
     var body: some View {
         Group {
@@ -480,11 +479,18 @@ struct SelfInspectionCreateRecordView: View {
                     projectDisplayName: projectDisplayName,
                     accessToken: accessToken,
                     form: form,
-                    submitError: $submitError
+                    submitError: $submitError,
+                    showCamera: $showCamera
                 )
             }
         }
         .background(TacticalGlassTheme.surface)
+        .sheet(isPresented: $showCamera) {
+            FieldCameraImagePicker(isPresented: $showCamera) { image in
+                form.appendCameraPhoto(image)
+            }
+            .ignoresSafeArea()
+        }
         .navigationTitle("新增查驗")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
@@ -544,15 +550,27 @@ struct SelfInspectionCreateRecordView: View {
         isSubmitting = true
         defer { isSubmitting = false }
         do {
-            let newIds: [String]
-            if form.photoPickerItems.isEmpty {
-                newIds = []
-            } else {
+            let maxNew = max(0, 30 - form.committedPhotoIds.count)
+            var newIds: [String] = []
+            if !form.photoPickerItems.isEmpty {
                 newIds = try await uploadSelfInspectionPickerPhotos(
                     projectId: projectId,
                     token: accessToken,
-                    items: form.photoPickerItems
+                    items: form.photoPickerItems,
+                    maxTotal: maxNew
                 )
+            }
+            if !form.cameraPhotoJPEGs.isEmpty {
+                let room = max(0, maxNew - newIds.count)
+                if room > 0 {
+                    let cam = try await uploadSelfInspectionCameraJPEGs(
+                        projectId: projectId,
+                        token: accessToken,
+                        jpegs: form.cameraPhotoJPEGs,
+                        maxCount: room
+                    )
+                    newIds.append(contentsOf: cam)
+                }
             }
             let merged = selfInspectionUniqIdsPreservingOrder(form.committedPhotoIds + newIds)
             guard merged.count <= 30 else {
@@ -602,6 +620,7 @@ struct SelfInspectionEditRecordView: View {
     @State private var form = SelfInspectionRecordFormState()
     @State private var isSubmitting = false
     @State private var submitError: String?
+    @State private var showCamera = false
 
     var body: some View {
         Group {
@@ -622,11 +641,18 @@ struct SelfInspectionEditRecordView: View {
                     projectDisplayName: projectDisplayName,
                     accessToken: accessToken,
                     form: form,
-                    submitError: $submitError
+                    submitError: $submitError,
+                    showCamera: $showCamera
                 )
             }
         }
         .background(TacticalGlassTheme.surface)
+        .sheet(isPresented: $showCamera) {
+            FieldCameraImagePicker(isPresented: $showCamera) { image in
+                form.appendCameraPhoto(image)
+            }
+            .ignoresSafeArea()
+        }
         .navigationTitle("編輯查驗")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
@@ -697,15 +723,27 @@ struct SelfInspectionEditRecordView: View {
         isSubmitting = true
         defer { isSubmitting = false }
         do {
-            let newIds: [String]
-            if form.photoPickerItems.isEmpty {
-                newIds = []
-            } else {
+            let maxNew = max(0, 30 - form.committedPhotoIds.count)
+            var newIds: [String] = []
+            if !form.photoPickerItems.isEmpty {
                 newIds = try await uploadSelfInspectionPickerPhotos(
                     projectId: projectId,
                     token: accessToken,
-                    items: form.photoPickerItems
+                    items: form.photoPickerItems,
+                    maxTotal: maxNew
                 )
+            }
+            if !form.cameraPhotoJPEGs.isEmpty {
+                let room = max(0, maxNew - newIds.count)
+                if room > 0 {
+                    let cam = try await uploadSelfInspectionCameraJPEGs(
+                        projectId: projectId,
+                        token: accessToken,
+                        jpegs: form.cameraPhotoJPEGs,
+                        maxCount: room
+                    )
+                    newIds.append(contentsOf: cam)
+                }
             }
             let merged = selfInspectionUniqIdsPreservingOrder(form.committedPhotoIds + newIds)
             guard merged.count <= 30 else {

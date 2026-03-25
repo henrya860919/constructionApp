@@ -413,5 +413,10 @@ enum PhotoPickerPreviewLoader {
         }
         return out
     }
+
+    /// 相簿預覽列在後、拍照 JPEG 接續（與 `FieldFormPhotoStrip` 本機列順序一致）。
+    static func mergedLocalPreviews(pickerUIImages: [UIImage], cameraJPEGs: [Data]) -> [UIImage] {
+        pickerUIImages + cameraJPEGs.compactMap { UIImage(data: $0) }
+    }
 }
 

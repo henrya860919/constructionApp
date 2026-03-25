@@ -50,6 +50,8 @@
 		<true/>
 	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>選取報修現場照片並上傳至專案。</string>
+	<string>選取或拍攝現場照片並上傳至專案。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>使用相機拍攝現場照片並上傳至專案。</string>
 </dict>
 </plist>
