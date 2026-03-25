@@ -131,6 +131,8 @@ struct MainShellView: View {
             DeficiencyModuleView()
         case .repair:
             RepairHomeView()
+        case .drawingManagement:
+            DrawingManagementHomeView()
         case .dailyLog:
             DailyLogHomeView()
         }

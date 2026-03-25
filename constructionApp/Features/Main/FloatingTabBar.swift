@@ -9,6 +9,7 @@ enum FieldModuleTab: Int, CaseIterable, Identifiable {
     case selfInspection
     case deficiency
     case repair
+    case drawingManagement
     case dailyLog
 
     var id: Int { rawValue }
@@ -18,6 +19,7 @@ enum FieldModuleTab: Int, CaseIterable, Identifiable {
         case .selfInspection: "查驗"
         case .deficiency: "缺失"
         case .repair: "報修"
+        case .drawingManagement: "圖說管理"
         case .dailyLog: "日誌"
         }
     }
@@ -27,6 +29,7 @@ enum FieldModuleTab: Int, CaseIterable, Identifiable {
         case .selfInspection: "checklist"
         case .deficiency: "wrench.and.screwdriver"
         case .repair: "hammer"
+        case .drawingManagement: "square.grid.2x2"
         case .dailyLog: "doc.text"
         }
     }
@@ -72,6 +75,8 @@ struct FloatingTabBar: View {
                                         ? Color.white
                                         : TacticalGlassTheme.mutedLabel.opacity(0.8)
                                 )
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
                         }
                         .frame(maxWidth: .infinity)
                     }

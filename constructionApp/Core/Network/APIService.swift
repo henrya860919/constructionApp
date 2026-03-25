@@ -588,6 +588,35 @@ enum APIService {
         try await authorizedDELETE(url: url, token: token)
     }
 
+    // MARK: - 圖說 drawing-nodes
+
+    static func listDrawingNodes(
+        baseURL: URL,
+        token: String,
+        projectId: String
+    ) async throws -> [DrawingNodeDTO] {
+        let url = baseURL
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("drawing-nodes")
+        return try await authorizedGET(DrawingNodeTreeEnvelope.self, url: url, token: token).data
+    }
+
+    static func listDrawingRevisions(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        nodeId: String
+    ) async throws -> [DrawingRevisionDTO] {
+        let url = baseURL
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("drawing-nodes")
+            .appendingPathComponent(nodeId)
+            .appendingPathComponent("revisions")
+        return try await authorizedGET(DrawingRevisionsEnvelope.self, url: url, token: token).data
+    }
+
     /// 下載需 Authorization 的檔案（例如 `/api/v1/files/:id`）。
     static func fetchAuthorizedData(url: URL, token: String) async throws -> Data {
         try AppConfiguration.validateAPIBaseIsSecureForRequests()

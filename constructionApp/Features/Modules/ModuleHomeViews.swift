@@ -11,6 +11,12 @@ struct SelfInspectionHomeView: View {
     }
 }
 
+struct DrawingManagementHomeView: View {
+    var body: some View {
+        DrawingManagementRootView()
+    }
+}
+
 struct DailyLogHomeView: View {
     var body: some View {
         ScrollView {

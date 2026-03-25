@@ -626,10 +626,6 @@ struct DefectListView: View {
                     .foregroundStyle(TacticalGlassTheme.mutedLabel)
             }
 
-            if item.status == "in_progress" {
-                progressStrip
-            }
-
             if urgent {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -665,19 +661,6 @@ struct DefectListView: View {
                         : TacticalGlassTheme.surfaceContainer
                 )
         }
-    }
-
-    private var progressStrip: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainerLowest)
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(TacticalGlassTheme.primaryGradient())
-                    .frame(width: max(0, geo.size.width * 0.42))
-            }
-        }
-        .frame(height: 6)
     }
 
     private func locationLine(floor: String?, location: String?) -> String {
