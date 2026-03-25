@@ -260,6 +260,7 @@ private struct SelfInspectionTemplatesListContent: View {
                 ProgressView("載入中…")
                     .tint(TacticalGlassTheme.primary)
                     .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .frame(maxWidth: .infinity)
                 Spacer()
             } else if model.templates.isEmpty {
                 Spacer()
@@ -380,6 +381,7 @@ struct SelfInspectionTemplateRecordsView: View {
                     ProgressView("載入中…")
                         .tint(TacticalGlassTheme.primary)
                         .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .frame(maxWidth: .infinity)
                     Spacer()
                 } else if model.records.isEmpty {
                     Spacer()

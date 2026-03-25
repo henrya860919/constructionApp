@@ -216,6 +216,7 @@ struct DefectListView: View {
                 ProgressView("載入中…")
                     .tint(TacticalGlassTheme.primary)
                     .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .frame(maxWidth: .infinity)
                 Spacer()
             } else if model.items.isEmpty {
                 Spacer()
@@ -596,6 +597,7 @@ struct DefectDetailView: View {
                     ProgressView("載入中…")
                         .tint(TacticalGlassTheme.primary)
                         .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .frame(maxWidth: .infinity)
                     Spacer(minLength: 0)
                 } else if let d = model.defect {
                     VStack(alignment: .leading, spacing: 12) {
