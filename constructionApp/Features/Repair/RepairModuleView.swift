@@ -3,6 +3,7 @@
 //  constructionApp
 //
 
+import Combine
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -68,27 +69,38 @@ final class RepairListViewModel {
     var items: [RepairListItemDTO] = []
     var meta: PageMetaDTO?
     var isLoading = false
+    var isLoadingMore = false
     var errorMessage: String?
     var statusFilter: RepairStatusFilter = .all
     var searchQuery = ""
+
+    var hasMore: Bool {
+        guard let meta else { return false }
+        return items.count < meta.total
+    }
 
     private var trimmedSearchQuery: String {
         searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func load(projectId: String, token: String) async {
+    func load(projectId: String, session: SessionManager) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             let q = trimmedSearchQuery.isEmpty ? nil : String(trimmedSearchQuery.prefix(200))
-            let env = try await APIService.listRepairRequests(
-                baseURL: AppConfiguration.apiRootURL,
-                token: token,
-                projectId: projectId,
-                status: statusFilter.queryValue,
-                q: q
-            )
+            let status = statusFilter.queryValue
+            let env = try await session.withValidAccessToken { token in
+                try await APIService.listRepairRequests(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    status: status,
+                    q: q,
+                    page: 1,
+                    limit: FieldListPagination.pageSize
+                )
+            }
             items = env.data
             meta = env.meta
         } catch let api as APIRequestError {
@@ -99,16 +111,49 @@ final class RepairListViewModel {
         }
     }
 
-    func deleteRepair(projectId: String, repairId: String, token: String) async {
+    func loadMore(projectId: String, session: SessionManager) async {
+        guard let m = meta, hasMore, !isLoadingMore, !isLoading else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        let nextPage = m.page + 1
+        do {
+            let q = trimmedSearchQuery.isEmpty ? nil : String(trimmedSearchQuery.prefix(200))
+            let status = statusFilter.queryValue
+            let env = try await session.withValidAccessToken { token in
+                try await APIService.listRepairRequests(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    status: status,
+                    q: q,
+                    page: nextPage,
+                    limit: FieldListPagination.pageSize
+                )
+            }
+            let existing = Set(items.map(\.id))
+            let newRows = env.data.filter { !existing.contains($0.id) }
+            items.append(contentsOf: newRows)
+            meta = env.meta
+        } catch let api as APIRequestError {
+            errorMessage = api.localizedDescription
+        } catch {
+            guard !error.isIgnorableTaskCancellation else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteRepair(projectId: String, repairId: String, session: SessionManager) async {
         errorMessage = nil
         do {
-            try await APIService.deleteRepairRequest(
-                baseURL: AppConfiguration.apiRootURL,
-                token: token,
-                projectId: projectId,
-                repairId: repairId
-            )
-            await load(projectId: projectId, token: token)
+            try await session.withValidAccessToken { token in
+                try await APIService.deleteRepairRequest(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    repairId: repairId
+                )
+            }
+            await load(projectId: projectId, session: session)
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
         } catch {
@@ -121,51 +166,23 @@ final class RepairListViewModel {
 struct RepairHomeView: View {
     @Environment(SessionManager.self) private var session
     @State private var model = RepairListViewModel()
-    @State private var showCreateRepair = false
     @State private var fabScrollIdle = true
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Group {
-                if let pid = session.selectedProjectId, let token = session.accessToken {
-                    RepairRequestsListView(
-                        projectId: pid,
-                        accessToken: token,
-                        model: model,
-                        fabScrollIdle: $fabScrollIdle
-                    )
-                } else {
-                    Text("缺少專案或登入狀態")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-
-            if session.selectedProjectId != nil, session.accessToken != nil {
-                Button {
-                    showCreateRepair = true
-                } label: {
-                    ObsidianSquareFAB(accessibilityLabel: "新增報修")
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 20)
-                .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
-                .opacity(fabScrollIdle ? 1 : 0)
-                .allowsHitTesting(fabScrollIdle)
-                .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
+        Group {
+            if let pid = session.selectedProjectId, session.isAuthenticated {
+                RepairRequestsListView(
+                    projectId: pid,
+                    model: model,
+                    fabScrollIdle: $fabScrollIdle
+                )
+            } else {
+                Text("缺少專案或登入狀態")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(TacticalGlassTheme.surface)
-        .sheet(isPresented: $showCreateRepair) {
-            if let pid = session.selectedProjectId, let token = session.accessToken {
-                NavigationStack {
-                    RepairCreateView(projectId: pid, accessToken: token) {
-                        await model.load(projectId: pid, token: token)
-                    }
-                }
-                .presentationDetents([.large])
-            }
-        }
     }
 }
 
@@ -173,97 +190,66 @@ private struct RepairEditSheetTarget: Identifiable {
     let id: String
 }
 
+private struct PendingRepairParentTarget: Identifiable {
+    let id: UUID
+}
+
 struct RepairRequestsListView: View {
+    enum ListChrome {
+        case main
+        case searchSession
+    }
+
     let projectId: String
-    let accessToken: String
     @Bindable var model: RepairListViewModel
     @Binding var fabScrollIdle: Bool
+    var listChrome: ListChrome = .main
+
+    @Environment(FieldOutboxStore.self) private var outbox
+    @Environment(SessionManager.self) private var session
+
+    @State private var searchSessionPresented = false
+    @State private var showCreateRepair = false
     @State private var searchFieldText = ""
     @State private var searchDebounceTask: Task<Void, Never>?
+    @FocusState private var searchFieldFocused: Bool
     @State private var repairIdPendingDelete: String?
     @State private var navigateToRepairId: String?
     @State private var repairEditSheetTarget: RepairEditSheetTarget?
+    @State private var pendingRecordSheetParent: PendingRepairParentTarget?
+
+    private var pendingRepairs: [FieldOutboxIndexRecord] {
+        outbox.records(forProjectId: projectId).filter { $0.kind == .repairCreate }
+    }
+
+    private var showEmptyPlaceholder: Bool {
+        model.items.isEmpty && pendingRepairs.isEmpty
+    }
+
+    private var listBottomContentMargin: CGFloat {
+        listChrome == .searchSession ? 28 : TacticalGlassTheme.tabBarScrollBottomMargin
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            obsidianModuleHeader(title: "報修紀錄")
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-
-            repairSearchField
-                .padding(.horizontal, 20)
-                .padding(.bottom, 10)
-
-            filterBar
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-
-            if let err = model.errorMessage {
-                Text(err)
-                    .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.tertiary)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
-            }
-
-            if model.isLoading && model.items.isEmpty {
-                Spacer()
-                ProgressView("載入中…")
-                    .tint(TacticalGlassTheme.primary)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else if model.items.isEmpty {
-                Spacer()
-                Text(model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "尚無報修資料" : "查無符合的紀錄")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else {
-                List {
-                    ForEach(model.items) { item in
-                        Button {
-                            navigateToRepairId = item.id
-                        } label: {
-                            repairRow(item)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                            Button {
-                                repairEditSheetTarget = RepairEditSheetTarget(id: item.id)
-                            } label: {
-                                Label("編輯", systemImage: "pencil")
-                            }
-                            .tint(TacticalGlassTheme.primary)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                repairIdPendingDelete = item.id
-                            } label: {
-                                Label("刪除", systemImage: "trash.fill")
-                            }
-                        }
+        Group {
+            if listChrome == .main {
+                mainChromeStack
+                    .navigationDestination(isPresented: $searchSessionPresented) {
+                        RepairListSearchSessionView(
+                            projectId: projectId,
+                            model: model,
+                            fabScrollIdle: $fabScrollIdle
+                        )
                     }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.defaultMinListRowHeight, 8)
-                .refreshable {
-                    await model.load(projectId: projectId, token: accessToken)
-                }
-                .fieldFABScrollIdleTracking($fabScrollIdle)
+            } else {
+                searchSessionChromeStack
             }
         }
         .navigationDestination(item: $navigateToRepairId) { repairId in
             RepairRequestDetailView(
                 projectId: projectId,
                 repairId: repairId,
-                accessToken: accessToken
+                accessToken: session.accessToken ?? ""
             )
         }
         .sheet(item: $repairEditSheetTarget) { target in
@@ -271,17 +257,23 @@ struct RepairRequestsListView: View {
                 RepairEditView(
                     projectId: projectId,
                     repairId: target.id,
-                    accessToken: accessToken
+                    accessToken: session.accessToken ?? ""
                 ) {
-                    await model.load(projectId: projectId, token: accessToken)
+                    await model.load(projectId: projectId, session: session)
                 }
             }
             .presentationDetents([.large])
         }
         .task(id: model.statusFilter) {
-            await model.load(projectId: projectId, token: accessToken)
+            await model.load(projectId: projectId, session: session)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldRemoteDataShouldRefresh)) { _ in
+            Task {
+                await model.load(projectId: projectId, session: session)
+            }
         }
         .onChange(of: searchFieldText) { _, newValue in
+            guard listChrome == .searchSession else { return }
             searchDebounceTask?.cancel()
             searchDebounceTask = Task {
                 try? await Task.sleep(for: .milliseconds(400))
@@ -289,7 +281,15 @@ struct RepairRequestsListView: View {
                 await MainActor.run {
                     model.searchQuery = newValue
                 }
-                await model.load(projectId: projectId, token: accessToken)
+                await model.load(projectId: projectId, session: session)
+            }
+        }
+        .onAppear {
+            guard listChrome == .searchSession else { return }
+            searchFieldText = model.searchQuery
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(50))
+                searchFieldFocused = true
             }
         }
         .confirmationDialog(
@@ -304,44 +304,255 @@ struct RepairRequestsListView: View {
                 guard let id = repairIdPendingDelete else { return }
                 repairIdPendingDelete = nil
                 Task {
-                    await model.deleteRepair(projectId: projectId, repairId: id, token: accessToken)
+                    await model.deleteRepair(projectId: projectId, repairId: id, session: session)
                 }
             }
             Button("取消", role: .cancel) {
                 repairIdPendingDelete = nil
             }
         }
+        .sheet(item: $pendingRecordSheetParent) { target in
+            NavigationStack {
+                RepairRecordCreateView(
+                    projectId: projectId,
+                    pendingRepairOutboxParentId: target.id,
+                    accessToken: session.accessToken ?? ""
+                ) {
+                    await model.load(projectId: projectId, session: session)
+                }
+            }
+            .presentationDetents([.large])
+        }
     }
 
-    private var repairSearchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
-            TextField("搜尋客戶、電話、內容、類別…", text: $searchFieldText)
-                .textFieldStyle(.plain)
-                .foregroundStyle(.white)
-                .submitLabel(.search)
-            if !searchFieldText.isEmpty {
+    private var mainChromeStack: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(alignment: .leading, spacing: 0) {
+                obsidianModuleHeader(title: "報修紀錄")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+
                 Button {
-                    searchFieldText = ""
+                    searchSessionPresented = true
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.body)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                    ObsidianListSearchPillAffordance(
+                        placeholder: "搜尋客戶、電話、內容、類別…",
+                        activeQuerySummary: model.searchQuery
+                    )
                 }
                 .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
+
+                filterBar
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+
+                resultsBlock
+            }
+
+            Button {
+                showCreateRepair = true
+            } label: {
+                ObsidianSquareFAB(accessibilityLabel: "新增報修")
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 20)
+            .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
+            .opacity(fabScrollIdle ? 1 : 0)
+            .allowsHitTesting(fabScrollIdle)
+            .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
+        }
+        .sheet(isPresented: $showCreateRepair) {
+            if let token = session.accessToken {
+                NavigationStack {
+                    RepairCreateView(projectId: projectId, accessToken: token) {
+                        await model.load(projectId: projectId, session: session)
+                    }
+                }
+                .presentationDetents([.large])
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+    }
+
+    private var searchSessionChromeStack: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ObsidianSearchModePillField(
+                text: $searchFieldText,
+                placeholder: "搜尋客戶、電話、內容、類別…",
+                isFocused: $searchFieldFocused
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
+
+            filterBar
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+
+            resultsBlock
+        }
+    }
+
+    @ViewBuilder
+    private var resultsBlock: some View {
+        if let err = model.errorMessage {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                    Text("無法載入列表")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("重試") {
+                    Task { await model.load(projectId: projectId, session: session) }
+                }
+                .buttonStyle(TacticalSecondaryButtonStyle())
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                    .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                    .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+        } else if model.isLoading && showEmptyPlaceholder {
+            Spacer()
+            ProgressView("載入中…")
+                .tint(TacticalGlassTheme.primary)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+            Spacer()
+        } else if showEmptyPlaceholder {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: "tray")
+                    .font(.title2)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                Text(model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "尚無報修資料" : "查無符合的紀錄")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            Spacer()
+        } else {
+            List {
+                ForEach(pendingRepairs) { rec in
+                    repairPendingOutboxRow(rec)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+                ForEach(model.items) { item in
+                    Button {
+                        navigateToRepairId = item.id
+                    } label: {
+                        repairRow(item)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button {
+                            repairEditSheetTarget = RepairEditSheetTarget(id: item.id)
+                        } label: {
+                            Label("編輯", systemImage: "pencil")
+                        }
+                        .tint(TacticalGlassTheme.primary)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            repairIdPendingDelete = item.id
+                        } label: {
+                            Label("刪除", systemImage: "trash.fill")
+                        }
+                    }
+                }
+                if model.hasMore {
+                    Button {
+                        Task { await model.loadMore(projectId: projectId, session: session) }
+                    } label: {
+                        HStack {
+                            if model.isLoadingMore {
+                                ProgressView()
+                                    .tint(TacticalGlassTheme.primary)
+                            }
+                            Text(model.isLoadingMore ? "載入中…" : "載入更多")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .disabled(model.isLoadingMore)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .contentMargins(.bottom, listBottomContentMargin, for: .scrollContent)
+            .scrollDismissesKeyboard(.interactively)
+            .environment(\.defaultMinListRowHeight, 8)
+            .refreshable {
+                await model.load(projectId: projectId, session: session)
+            }
+            .fieldFABScrollIdleTracking($fabScrollIdle)
+        }
+    }
+
+    private func repairPendingOutboxRow(_ rec: FieldOutboxIndexRecord) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(rec.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Text("待上傳")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(TacticalGlassTheme.primary.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            Text("連線後將建立於伺服器；可先新增執行紀錄並一併上傳。")
+                .font(.caption)
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                pendingRecordSheetParent = PendingRepairParentTarget(id: rec.id)
+            } label: {
+                Text("新增執行紀錄")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(TacticalSecondaryButtonStyle())
+        }
+        .padding(14)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+                .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(TacticalGlassTheme.primary.opacity(0.25), lineWidth: 1)
         }
     }
 
@@ -440,6 +651,35 @@ struct RepairRequestsListView: View {
             .padding(.vertical, 5)
             .background(Capsule().fill(color.opacity(0.18)))
             .foregroundStyle(color)
+    }
+}
+
+private struct RepairListSearchSessionView: View {
+    @Environment(\.dismiss) private var dismiss
+    let projectId: String
+    @Bindable var model: RepairListViewModel
+    @Binding var fabScrollIdle: Bool
+
+    var body: some View {
+        RepairRequestsListView(
+            projectId: projectId,
+            model: model,
+            fabScrollIdle: $fabScrollIdle,
+            listChrome: .searchSession
+        )
+        .navigationBarBackButtonHidden(true)
+        .navigationTitle("搜尋報修")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("取消") {
+                    dismiss()
+                }
+                .foregroundStyle(TacticalGlassTheme.primary)
+            }
+        }
     }
 }
 
@@ -676,6 +916,8 @@ struct RepairRequestDetailView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin, for: .scrollContent)
+                .scrollDismissesKeyboard(.interactively)
                 .environment(\.defaultMinListRowHeight, 8)
             }
         }
@@ -761,7 +1003,7 @@ struct RepairRequestDetailView: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(TacticalGlassTheme.mutedLabel)
                     .padding(.horizontal, 4)
-                TacticalPhotoAlbumGrid(photos: photos, accessToken: accessToken, columnCount: 3, spacing: 10)
+                TacticalPhotoAlbumGrid(photos: photos, columnCount: 3, spacing: 10)
                     .padding(.horizontal, 4)
             }
         }
@@ -802,7 +1044,7 @@ struct RepairRequestDetailView: View {
 
                 let pics = rec.photos ?? []
                 if !pics.isEmpty {
-                    TacticalPhotoAlbumGrid(photos: pics, accessToken: accessToken, columnCount: 3, spacing: 8)
+                    TacticalPhotoAlbumGrid(photos: pics, columnCount: 3, spacing: 8)
                 }
             }
         }
@@ -963,7 +1205,7 @@ final class RepairEditViewModel {
             var newPhotoIds: [String] = []
             for item in photoPickerItems {
                 guard newPhotoIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "photo.\(ext)"
                 let mime = repairMimeForImageData(data: data, fallbackExtension: ext)
@@ -1124,7 +1366,6 @@ struct RepairEditView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: edit.committedPhotoIds,
                             localPreviewImages: edit.mergedLocalPhotoPreviews,
                             onRemoveRemote: { id in edit.committedPhotoIds.removeAll { $0 == id } },
@@ -1324,22 +1565,48 @@ final class RepairRecordCreateViewModel {
         }
     }
 
-    func submit(projectId: String, repairId: String, token: String) async -> Bool {
+    func submit(
+        projectId: String,
+        repairId: String?,
+        pendingRepairOutboxParentId: UUID?,
+        token: String,
+        outbox: FieldOutboxStore
+    ) async -> Bool {
         errorMessage = nil
         let text = contentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             errorMessage = "請填寫報修紀錄內容"
             return false
         }
+        let hasServerRepair = repairId != nil && !(repairId!.isEmpty)
+        let hasPendingParent = pendingRepairOutboxParentId != nil
+        guard hasServerRepair || hasPendingParent else {
+            errorMessage = "無法建立紀錄"
+            return false
+        }
+
+        if !FieldNetworkMonitor.shared.isReachable {
+            return await enqueueRepairRecordOutbox(
+                projectId: projectId,
+                repairId: repairId,
+                pendingRepairOutboxParentId: pendingRepairOutboxParentId,
+                text: text,
+                outbox: outbox
+            )
+        }
 
         isSubmitting = true
         defer { isSubmitting = false }
 
         do {
+            guard let rid = repairId, !rid.isEmpty else {
+                errorMessage = "此報修尚未同步，請連線後再試或從待上傳項目新增紀錄"
+                return false
+            }
             var attachmentIds: [String] = []
             for item in photoPickerItems {
                 guard attachmentIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "record.\(ext)"
                 let mime = mimeForImage(data: data, fallbackExtension: ext)
@@ -1377,15 +1644,93 @@ final class RepairRecordCreateViewModel {
                 baseURL: AppConfiguration.apiRootURL,
                 token: token,
                 projectId: projectId,
-                repairId: repairId,
+                repairId: rid,
                 body: body
             )
             return true
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
+            if case .transport = api {
+                return await enqueueRepairRecordOutbox(
+                    projectId: projectId,
+                    repairId: repairId,
+                    pendingRepairOutboxParentId: pendingRepairOutboxParentId,
+                    text: text,
+                    outbox: outbox
+                )
+            }
             return false
         } catch {
             guard !error.isIgnorableTaskCancellation else { return false }
+            if error.isLikelyConnectivityFailure {
+                return await enqueueRepairRecordOutbox(
+                    projectId: projectId,
+                    repairId: repairId,
+                    pendingRepairOutboxParentId: pendingRepairOutboxParentId,
+                    text: text,
+                    outbox: outbox
+                )
+            }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func enqueueRepairRecordOutbox(
+        projectId: String,
+        repairId: String?,
+        pendingRepairOutboxParentId: UUID?,
+        text: String,
+        outbox: FieldOutboxStore
+    ) async -> Bool {
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            var mediaData: [String: Data] = [:]
+            var photoMetas: [FieldOutboxMediaFile] = []
+            var idx = 0
+            for item in photoPickerItems {
+                guard idx < 30, let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
+                let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+                let fname = "record.\(ext)"
+                let mime = mimeForImage(data: data, fallbackExtension: ext)
+                let key = "r\(idx).\(ext)"
+                mediaData[key] = data
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: fname, mimeType: mime, category: "repair_record")
+                )
+                idx += 1
+            }
+            for (j, jpeg) in cameraPhotoJPEGs.enumerated() {
+                guard idx < 30 else { break }
+                let key = "rcam\(j).jpg"
+                mediaData[key] = jpeg
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: "camera.jpg", mimeType: "image/jpeg", category: "repair_record")
+                )
+                idx += 1
+            }
+            guard idx <= 30 else {
+                errorMessage = "照片最多 30 張"
+                return false
+            }
+
+            let payload = FieldOutboxRepairRecordPayload(
+                repairId: repairId,
+                dependsOnRepairOutboxId: pendingRepairOutboxParentId,
+                content: text,
+                photos: photoMetas
+            )
+            try outbox.enqueueRepairRecord(
+                projectId: projectId,
+                title: "報修執行紀錄",
+                repairId: repairId,
+                dependsOnRepairOutboxId: pendingRepairOutboxParentId,
+                payload: payload,
+                mediaData: mediaData
+            )
+            return true
+        } catch {
             errorMessage = error.localizedDescription
             return false
         }
@@ -1404,10 +1749,28 @@ final class RepairRecordCreateViewModel {
 
 struct RepairRecordCreateView: View {
     let projectId: String
-    let repairId: String
+    let repairId: String?
+    let pendingRepairOutboxParentId: UUID?
     let accessToken: String
     var onFinished: () async -> Void
 
+    init(projectId: String, repairId: String, accessToken: String, onFinished: @escaping () async -> Void) {
+        self.projectId = projectId
+        self.repairId = repairId
+        self.pendingRepairOutboxParentId = nil
+        self.accessToken = accessToken
+        self.onFinished = onFinished
+    }
+
+    init(projectId: String, pendingRepairOutboxParentId: UUID, accessToken: String, onFinished: @escaping () async -> Void) {
+        self.projectId = projectId
+        self.repairId = nil
+        self.pendingRepairOutboxParentId = pendingRepairOutboxParentId
+        self.accessToken = accessToken
+        self.onFinished = onFinished
+    }
+
+    @Environment(FieldOutboxStore.self) private var fieldOutbox
     @Environment(\.dismiss) private var dismiss
     @State private var createModel = RepairRecordCreateViewModel()
     @State private var showCamera = false
@@ -1449,7 +1812,6 @@ struct RepairRecordCreateView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: [],
                             localPreviewImages: model.mergedLocalPhotoPreviews,
                             onRemoveRemote: { _ in },
@@ -1475,7 +1837,13 @@ struct RepairRecordCreateView: View {
 
                 Button {
                     Task {
-                        let ok = await createModel.submit(projectId: projectId, repairId: repairId, token: accessToken)
+                        let ok = await createModel.submit(
+                            projectId: projectId,
+                            repairId: repairId,
+                            pendingRepairOutboxParentId: pendingRepairOutboxParentId,
+                            token: accessToken,
+                            outbox: fieldOutbox
+                        )
                         if ok {
                             await onFinished()
                             dismiss()
@@ -1505,7 +1873,7 @@ struct RepairRecordCreateView: View {
             }
             .ignoresSafeArea()
         }
-        .navigationTitle("新增報修紀錄")
+        .navigationTitle(pendingRepairOutboxParentId != nil ? "新增紀錄（待同步報修）" : "新增報修紀錄")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -1606,7 +1974,6 @@ struct RepairRecordEditView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: committedPhotoIds,
                             localPreviewImages: mergedLocalPhotoPreviews,
                             onRemoveRemote: { id in committedPhotoIds.removeAll { $0 == id } },
@@ -1689,7 +2056,7 @@ struct RepairRecordEditView: View {
             var newIds: [String] = []
             for item in photoPickerItems {
                 guard newIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "record.\(ext)"
                 let mime = repairMimeForImageData(data: data, fallbackExtension: ext)

@@ -83,6 +83,10 @@ struct FieldSettingsView: View {
                 }
 
                 TacticalGlassCard {
+                    FieldCacheStorageSettingsRow()
+                }
+
+                TacticalGlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("當前專案")
                             .font(.caption.weight(.bold))

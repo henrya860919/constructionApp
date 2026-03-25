@@ -121,6 +121,98 @@ struct ObsidianSquareFAB: View {
     }
 }
 
+// MARK: - List search (pill affordance + full-screen search session)
+
+/// 列表根頁：膠囊外觀，點擊後 `push` 至搜尋頁（Tactical Obsidian）。
+struct ObsidianListSearchPillAffordance: View {
+    var placeholder: String
+    /// 非空時顯示目前已套用的關鍵字摘要。
+    var activeQuerySummary: String?
+
+    private var trimmedSummary: String {
+        (activeQuerySummary ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+            if trimmedSummary.isEmpty {
+                Text(placeholder)
+                    .font(.body)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(trimmedSummary)
+                    .font(.body)
+                    .foregroundStyle(Color.white.opacity(0.92))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.65))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background {
+            Capsule(style: .continuous)
+                .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+        }
+        .contentShape(Capsule(style: .continuous))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel(trimmedSummary.isEmpty ? "搜尋" : "搜尋，關鍵字 \(trimmedSummary)")
+    }
+}
+
+/// 搜尋專用頁頂部：膠囊輸入（與電話 app 類似的形狀，配色維持 Obsidian）。
+struct ObsidianSearchModePillField: View {
+    @Binding var text: String
+    var placeholder: String
+    @FocusState.Binding var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .foregroundStyle(.primary)
+                .submitLabel(.search)
+                .focused($isFocused)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清除搜尋文字")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .background {
+            Capsule(style: .continuous)
+                .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+        }
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - FAB fades while list / scroll moves
 
 private struct FieldFABScrollIdleModifier: ViewModifier {
@@ -200,12 +292,12 @@ struct TacticalTextField: View {
 // MARK: - Photo album grid (square cells + full-screen preview)
 
 enum TacticalPhotoAlbumSource {
-    case remote([FileAttachmentDTO], accessToken: String)
+    case remote([FileAttachmentDTO])
     case local([UIImage])
 
     fileprivate var count: Int {
         switch self {
-        case .remote(let photos, _): photos.count
+        case .remote(let photos): photos.count
         case .local(let images): images.count
         }
     }
@@ -249,8 +341,8 @@ struct TacticalPhotoAlbumGrid: View {
         self.cornerRadius = cornerRadius
     }
 
-    init(photos: [FileAttachmentDTO], accessToken: String, columnCount: Int = 3, spacing: CGFloat = 10, cornerRadius: CGFloat = TacticalGlassTheme.cornerRadius) {
-        self.init(source: .remote(photos, accessToken: accessToken), columnCount: columnCount, spacing: spacing, cornerRadius: cornerRadius)
+    init(photos: [FileAttachmentDTO], columnCount: Int = 3, spacing: CGFloat = 10, cornerRadius: CGFloat = TacticalGlassTheme.cornerRadius) {
+        self.init(source: .remote(photos), columnCount: columnCount, spacing: spacing, cornerRadius: cornerRadius)
     }
 
     init(images: [UIImage], columnCount: Int = 3, spacing: CGFloat = 10, cornerRadius: CGFloat = TacticalGlassTheme.cornerRadius) {
@@ -317,8 +409,8 @@ struct TacticalPhotoAlbumGrid: View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(TacticalGlassTheme.surfaceContainerLowest)
                 switch source {
-                case .remote(let photos, let token):
-                    AuthenticatedRemoteImage(apiPath: photos[index].url, accessToken: token)
+                case .remote(let photos):
+                    AuthenticatedRemoteImage(apiPath: photos[index].url)
                 case .local(let images):
                     Image(uiImage: images[index])
                         .resizable()
@@ -380,8 +472,8 @@ private struct TacticalPhotoAlbumFullScreenView: View {
     private func previewPage(for index: Int) -> some View {
         Group {
             switch source {
-            case .remote(let photos, let token):
-                AuthenticatedRemoteImage(apiPath: photos[index].url, accessToken: token, scaledToFit: true)
+            case .remote(let photos):
+                AuthenticatedRemoteImage(apiPath: photos[index].url, scaledToFit: true)
             case .local(let images):
                 Image(uiImage: images[index])
                     .resizable()
@@ -407,7 +499,7 @@ enum PhotoPickerPreviewLoader {
         var out: [UIImage] = []
         out.reserveCapacity(items.count)
         for item in items {
-            guard let data = try? await item.loadTransferable(type: Data.self),
+            guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item),
                   let ui = UIImage(data: data) else { continue }
             out.append(ui)
         }

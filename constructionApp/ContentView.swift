@@ -9,9 +9,12 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(SessionManager.self) private var session
+    @Environment(FieldAppVersionChecker.self) private var versionChecker
 
     /// 用於觸發根流程過場（略過連線中狀態的細微變化）。
     private var rootFlowStep: Int {
+        if !versionChecker.didFinishLaunchCheck { return 0 }
+        if versionChecker.requiresForceUpdate { return 0 }
         if session.isRestoringSession { return 0 }
         if !session.isAuthenticated { return 1 }
         if session.selectedProjectId == nil { return 2 }
@@ -20,7 +23,20 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if session.isRestoringSession {
+            if !versionChecker.didFinishLaunchCheck {
+                ZStack {
+                    TacticalGlassTheme.surface
+                        .ignoresSafeArea()
+                    ProgressView("檢查更新…")
+                        .tint(TacticalGlassTheme.primary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .transition(.opacity)
+            } else if versionChecker.requiresForceUpdate {
+                FieldForceUpdateView(appStoreURL: versionChecker.appStoreURL)
+                    .transition(.opacity)
+            } else if session.isRestoringSession {
                 ZStack {
                     TacticalGlassTheme.surface
                         .ignoresSafeArea()
@@ -49,4 +65,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environment(SessionManager())
+        .environment(FieldAppVersionChecker.shared)
 }

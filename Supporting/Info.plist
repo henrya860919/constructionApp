@@ -53,5 +53,9 @@
 	<string>選取或拍攝現場照片並上傳至專案。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>使用相機拍攝現場照片並上傳至專案。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>於現場標註或關聯查驗／報修位置時使用（僅在使用相關功能時請求）。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>將現場拍攝或匯出的照片儲存至您的相簿（僅在您選擇儲存時使用）。</string>
 </dict>
 </plist>

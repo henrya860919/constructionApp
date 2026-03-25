@@ -9,19 +9,57 @@ import SwiftUI
 @Observable
 final class ProjectPickerViewModel {
     var projects: [ProjectSummary] = []
+    var listMeta: ProjectListResponse.Meta?
     var isLoading = false
+    var isLoadingMore = false
     var errorMessage: String?
 
+    var hasMore: Bool {
+        guard let m = listMeta else { return false }
+        return projects.count < m.total
+    }
+
     func load(session: SessionManager) async {
-        guard let token = session.accessToken else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            projects = try await APIService.listProjects(
-                baseURL: AppConfiguration.apiRootURL,
-                token: token
-            )
+            let page = try await session.withValidAccessToken { token in
+                try await APIService.listProjects(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    page: 1,
+                    limit: FieldListPagination.pageSize
+                )
+            }
+            projects = page.data
+            listMeta = page.meta
+        } catch let api as APIRequestError {
+            errorMessage = api.localizedDescription
+        } catch {
+            guard !error.isIgnorableTaskCancellation else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadMore(session: SessionManager) async {
+        guard let m = listMeta, hasMore, !isLoadingMore, !isLoading else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        let nextPage = m.page + 1
+        do {
+            let page = try await session.withValidAccessToken { token in
+                try await APIService.listProjects(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    page: nextPage,
+                    limit: FieldListPagination.pageSize
+                )
+            }
+            let existing = Set(projects.map(\.id))
+            let newItems = page.data.filter { !existing.contains($0.id) }
+            projects.append(contentsOf: newItems)
+            listMeta = page.meta
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
         } catch {
@@ -66,14 +104,44 @@ struct ProjectPickerView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 40)
                     } else if let err = model.errorMessage {
-                        Text(err)
-                            .font(.subheadline)
-                            .foregroundStyle(TacticalGlassTheme.tertiary)
-                            .padding(.vertical, 8)
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(TacticalGlassTheme.tertiary)
+                                Text("無法載入專案")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                            }
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("重試") {
+                                Task { await model.load(session: session) }
+                            }
+                            .buttonStyle(TacticalSecondaryButtonStyle())
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                        }
                     } else if model.projects.isEmpty {
-                        Text("尚無可存取專案")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        VStack(spacing: 8) {
+                            Image(systemName: "folder.badge.questionmark")
+                                .font(.title2)
+                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            Text("尚無可存取專案")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
                     } else {
                         LazyVStack(spacing: 12) {
                             ForEach(model.projects) { project in
@@ -83,6 +151,25 @@ struct ProjectPickerView: View {
                                     projectRow(project)
                                 }
                                 .buttonStyle(.plain)
+                            }
+                            if model.hasMore {
+                                Button {
+                                    Task { await model.loadMore(session: session) }
+                                } label: {
+                                    HStack {
+                                        if model.isLoadingMore {
+                                            ProgressView()
+                                                .tint(TacticalGlassTheme.primary)
+                                        }
+                                        Text(model.isLoadingMore ? "載入中…" : "載入更多")
+                                            .font(.subheadline.weight(.semibold))
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .disabled(model.isLoadingMore)
                             }
                         }
                     }

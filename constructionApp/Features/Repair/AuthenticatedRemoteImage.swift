@@ -7,8 +7,8 @@ import SwiftUI
 
 /// 以 Bearer token 載入後端 `/api/v1/files/...` 圖片（AsyncImage 不會帶 Authorization）。
 struct AuthenticatedRemoteImage: View {
+    @Environment(SessionManager.self) private var session
     let apiPath: String
-    let accessToken: String
     /// 全螢幕預覽等情境：完整顯示圖片（預設為方格縮放填滿裁切）。
     var scaledToFit: Bool = false
 
@@ -42,13 +42,21 @@ struct AuthenticatedRemoteImage: View {
     private func load() async {
         image = nil
         loadFailed = false
+        if let cached = FieldCacheStorage.readCachedImageData(forApiPath: apiPath),
+           let ui = UIImage(data: cached) {
+            await MainActor.run { self.image = ui }
+            return
+        }
         guard let url = AppConfiguration.absoluteURL(apiPath: apiPath) else {
-            loadFailed = true
+            await MainActor.run { loadFailed = true }
             return
         }
         do {
-            let data = try await APIService.fetchAuthorizedData(url: url, token: accessToken)
+            let data = try await session.withValidAccessToken { token in
+                try await APIService.fetchAuthorizedData(url: url, token: token)
+            }
             if let ui = UIImage(data: data) {
+                FieldCacheStorage.writeCachedImageData(data, forApiPath: apiPath)
                 await MainActor.run { self.image = ui }
             } else {
                 await MainActor.run { loadFailed = true }

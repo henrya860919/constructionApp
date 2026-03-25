@@ -16,9 +16,9 @@ enum FieldCameraCapture {
 }
 
 enum FieldCameraImageEncoding {
-    /// 壓成 JPEG 供上傳與預覽（與相簿選圖路徑一致）。
-    static func jpegData(from image: UIImage, quality: CGFloat = 0.88) -> Data? {
-        image.jpegData(compressionQuality: quality)
+    /// 壓成 JPEG 供上傳與預覽（與相簿選圖路徑一致，單檔 ≤ 1MB）。
+    static func jpegData(from image: UIImage, quality _: CGFloat = 0.88) -> Data? {
+        FieldPhotoUploadEncoding.jpegDataForUpload(from: image)
     }
 }
 

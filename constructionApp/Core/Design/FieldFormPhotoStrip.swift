@@ -14,7 +14,6 @@ enum FieldFormPhotoStripMetrics {
 
 /// 橫向捲動；先顯示已上傳（遠端）id，再顯示相簿預覽（本機）。
 struct FieldFormPhotoStrip: View {
-    let accessToken: String
     let remotePhotoIds: [String]
     let localPreviewImages: [UIImage]
     let onRemoveRemote: (String) -> Void
@@ -26,7 +25,7 @@ struct FieldFormPhotoStrip: View {
                 HStack(spacing: 10) {
                     ForEach(remotePhotoIds, id: \.self) { id in
                         stripThumb {
-                            AuthenticatedRemoteImage(apiPath: "/api/v1/files/\(id)", accessToken: accessToken)
+                            AuthenticatedRemoteImage(apiPath: "/api/v1/files/\(id)")
                         } onRemove: {
                             onRemoveRemote(id)
                         }

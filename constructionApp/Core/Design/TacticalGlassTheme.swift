@@ -11,8 +11,11 @@ enum TacticalGlassTheme {
     /// Unified corner radius for cards, buttons, FAB (12pt).
     static let cornerRadius: CGFloat = 12
 
-    /// 列表頁 FAB 距螢幕底；愈小愈靠近 tab bar（與 `MainShellView` 底部預留搭配）。
-    static let fieldFABBottomInset: CGFloat = 50
+    /// 鍵盤關閉時，列表捲動區底端需避開浮動 Tab Bar；勿用外層 `VStack` 的 `padding(.bottom)`，否則鍵盤彈出時會在列表與鍵盤間留下一塊底色空隙。
+    static let tabBarScrollBottomMargin: CGFloat = 88
+
+    /// 列表頁 FAB 距螢幕底；須高於 `FloatingTabBar`（約與 `tabBarScrollBottomMargin` 同階）再加一點間距，避免 56pt 方鈕被玻璃條遮住。
+    static let fieldFABBottomInset: CGFloat = tabBarScrollBottomMargin + 18
 
     /// Page base — Obsidian `#0B0E11`
     static let surface = Color(red: 11 / 255, green: 14 / 255, blue: 17 / 255)

@@ -84,5 +84,15 @@ struct FloatingTabBar: View {
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: barRadius, style: .continuous))
         }
         .padding(.horizontal, 16)
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity)
+        /// 玻璃／留白區若未參與 hit test，觸控會穿透到底下列表；全寬底帶加極淡填色與矩形 content shape 攔截整塊區域。
+        .background {
+            Rectangle()
+                .fill(TacticalGlassTheme.surface.opacity(0.001))
+                .contentShape(Rectangle())
+        }
+        .contentShape(Rectangle())
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }

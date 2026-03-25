@@ -67,7 +67,7 @@ final class RepairCreateViewModel {
         }
     }
 
-    func submit(projectId: String, token: String) async -> Bool {
+    func submit(projectId: String, token: String, outbox: FieldOutboxStore) async -> Bool {
         errorMessage = nil
         let name = customerName.trimmingCharacters(in: .whitespacesAndNewlines)
         let phone = contactPhone.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -89,6 +89,10 @@ final class RepairCreateViewModel {
             return false
         }
 
+        if !FieldNetworkMonitor.shared.isReachable {
+            return await enqueueRepairOutbox(projectId: projectId, outbox: outbox)
+        }
+
         isSubmitting = true
         defer { isSubmitting = false }
 
@@ -98,7 +102,7 @@ final class RepairCreateViewModel {
         do {
             for item in photoPickerItems {
                 guard photoIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "photo.\(ext)"
                 let mime = mimeForImage(data: data, fallbackExtension: ext)
@@ -168,9 +172,88 @@ final class RepairCreateViewModel {
             return true
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
+            if case .transport = api {
+                return await enqueueRepairOutbox(projectId: projectId, outbox: outbox)
+            }
             return false
         } catch {
             guard !error.isIgnorableTaskCancellation else { return false }
+            if error.isLikelyConnectivityFailure {
+                return await enqueueRepairOutbox(projectId: projectId, outbox: outbox)
+            }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func enqueueRepairOutbox(projectId: String, outbox: FieldOutboxStore) async -> Bool {
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            var mediaData: [String: Data] = [:]
+            var photoMetas: [FieldOutboxMediaFile] = []
+            var idx = 0
+            for item in photoPickerItems {
+                guard idx < 30, let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
+                let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+                let fname = "photo.\(ext)"
+                let mime = mimeForImage(data: data, fallbackExtension: ext)
+                let key = "p\(idx).\(ext)"
+                mediaData[key] = data
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: fname, mimeType: mime, category: "repair_photo")
+                )
+                idx += 1
+            }
+            for (j, jpeg) in cameraPhotoJPEGs.enumerated() {
+                guard idx < 30 else { break }
+                let key = "cam\(j).jpg"
+                mediaData[key] = jpeg
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: "camera.jpg", mimeType: "image/jpeg", category: "repair_photo")
+                )
+                idx += 1
+            }
+            guard idx <= 30 else {
+                errorMessage = "照片最多 30 張"
+                return false
+            }
+
+            var attachMetas: [FieldOutboxMediaFile] = []
+            for (i, file) in extraFiles.enumerated() {
+                let key = "att\(i)_\(file.name.replacingOccurrences(of: "/", with: "_"))"
+                mediaData[key] = file.data
+                attachMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: file.name, mimeType: file.mime, category: "repair_attachment")
+                )
+            }
+
+            let name = customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let phone = contactPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+            let content = repairContent.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            let payload = FieldOutboxRepairCreatePayload(
+                customerName: name,
+                contactPhone: phone,
+                repairContent: content,
+                problemCategory: problemCategory,
+                isSecondRepair: isSecondRepair,
+                status: status,
+                unitLabel: unitLabel.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                remarks: remarks.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                deliveryDate: deliveryDateYMD.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                repairDate: repairDateYMD.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                photos: photoMetas,
+                attachments: attachMetas
+            )
+            try outbox.enqueueRepairCreate(
+                projectId: projectId,
+                title: "\(name) · 報修",
+                payload: payload,
+                mediaData: mediaData
+            )
+            return true
+        } catch {
             errorMessage = error.localizedDescription
             return false
         }
@@ -199,6 +282,7 @@ struct RepairCreateView: View {
     let accessToken: String
     var onFinished: () async -> Void
 
+    @Environment(FieldOutboxStore.self) private var fieldOutbox
     @Environment(\.dismiss) private var dismiss
     @State private var createModel = RepairCreateViewModel()
     @State private var showDocImporter = false
@@ -279,7 +363,6 @@ struct RepairCreateView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: [],
                             localPreviewImages: vm.mergedLocalPhotoPreviews,
                             onRemoveRemote: { _ in },
@@ -325,7 +408,7 @@ struct RepairCreateView: View {
 
                 Button {
                     Task {
-                        let ok = await createModel.submit(projectId: projectId, token: accessToken)
+                        let ok = await createModel.submit(projectId: projectId, token: accessToken, outbox: fieldOutbox)
                         if ok {
                             dismiss()
                             await onFinished()

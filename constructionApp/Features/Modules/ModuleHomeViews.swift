@@ -27,6 +27,7 @@ struct DailyLogHomeView: View {
             }
             .padding(24)
         }
+        .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin, for: .scrollContent)
         .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
     }

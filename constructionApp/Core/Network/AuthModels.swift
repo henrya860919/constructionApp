@@ -17,10 +17,36 @@ struct AuthUser: Codable, Equatable, Sendable {
 struct LoginResponse: Decodable, Sendable {
     struct DataPart: Decodable, Sendable {
         let accessToken: String
+        let refreshToken: String?
         let user: AuthUser
     }
 
     let data: DataPart
+}
+
+struct LoginResult: Sendable {
+    let accessToken: String
+    let refreshToken: String?
+    let user: AuthUser
+}
+
+struct RefreshTokenEnvelope: Decodable, Sendable {
+    struct DataPart: Decodable, Sendable {
+        let accessToken: String
+        let refreshToken: String
+    }
+
+    let data: DataPart
+}
+
+struct AppVersionDTO: Decodable, Sendable {
+    let minimumVersion: String
+    let latestVersion: String
+    let appStoreURL: String
+}
+
+struct AppVersionEnvelope: Decodable, Sendable {
+    let data: AppVersionDTO
 }
 
 struct MeResponse: Decodable, Sendable {

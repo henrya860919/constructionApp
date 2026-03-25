@@ -5,6 +5,7 @@
 //  自主查驗：已匯入樣板列表 → 紀錄列表（FAB 新增）→ 填寫（表頭 + 全時機區塊檢查項，通過／不通過）。
 //
 
+import Combine
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -18,16 +19,18 @@ final class SelfInspectionTemplatesListViewModel {
     var isLoading = false
     var errorMessage: String?
 
-    func load(projectId: String, token: String) async {
+    func load(projectId: String, session: SessionManager) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            templates = try await APIService.listSelfInspectionTemplates(
-                baseURL: AppConfiguration.apiRootURL,
-                token: token,
-                projectId: projectId
-            )
+            templates = try await session.withValidAccessToken { token in
+                try await APIService.listSelfInspectionTemplates(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId
+                )
+            }
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
         } catch {
@@ -43,22 +46,58 @@ final class SelfInspectionRecordsListViewModel {
     var records: [SelfInspectionRecordListDTO] = []
     var meta: PageMetaDTO?
     var isLoading = false
+    var isLoadingMore = false
     var errorMessage: String?
 
-    func load(projectId: String, templateId: String, token: String) async {
+    var hasMore: Bool {
+        guard let meta else { return false }
+        return records.count < meta.total
+    }
+
+    func load(projectId: String, templateId: String, session: SessionManager) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let env = try await APIService.listSelfInspectionRecords(
-                baseURL: AppConfiguration.apiRootURL,
-                token: token,
-                projectId: projectId,
-                templateId: templateId,
-                page: 1,
-                limit: 50
-            )
+            let env = try await session.withValidAccessToken { token in
+                try await APIService.listSelfInspectionRecords(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    templateId: templateId,
+                    page: 1,
+                    limit: FieldListPagination.pageSize
+                )
+            }
             records = env.data
+            meta = env.meta
+        } catch let api as APIRequestError {
+            errorMessage = api.localizedDescription
+        } catch {
+            guard !error.isIgnorableTaskCancellation else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadMore(projectId: String, templateId: String, session: SessionManager) async {
+        guard let m = meta, hasMore, !isLoadingMore, !isLoading else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        let nextPage = m.page + 1
+        do {
+            let env = try await session.withValidAccessToken { token in
+                try await APIService.listSelfInspectionRecords(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    templateId: templateId,
+                    page: nextPage,
+                    limit: FieldListPagination.pageSize
+                )
+            }
+            let existing = Set(records.map(\.id))
+            let newRows = env.data.filter { !existing.contains($0.id) }
+            records.append(contentsOf: newRows)
             meta = env.meta
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
@@ -229,17 +268,15 @@ struct SelfInspectionModuleView: View {
 
     var body: some View {
         Group {
-            if let pid = session.selectedProjectId, let token = session.accessToken {
+            if let pid = session.selectedProjectId, session.isAuthenticated {
                 SelfInspectionTemplatesListContent(
                     projectId: pid,
-                    accessToken: token,
                     model: model,
                     navigateTo: $navigateTo
                 )
                 .navigationDestination(item: $navigateTo) { route in
                     SelfInspectionTemplateRecordsView(
                         projectId: pid,
-                        accessToken: token,
                         templateId: route.templateId,
                         templateName: route.templateName
                     )
@@ -252,8 +289,15 @@ struct SelfInspectionModuleView: View {
         }
         .background(TacticalGlassTheme.surface)
         .task {
-            if let pid = session.selectedProjectId, let token = session.accessToken {
-                await model.load(projectId: pid, token: token)
+            if let pid = session.selectedProjectId, session.isAuthenticated {
+                await model.load(projectId: pid, session: session)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldRemoteDataShouldRefresh)) { _ in
+            Task {
+                if let pid = session.selectedProjectId, session.isAuthenticated {
+                    await model.load(projectId: pid, session: session)
+                }
             }
         }
     }
@@ -262,8 +306,8 @@ struct SelfInspectionModuleView: View {
 // MARK: - Templates list
 
 private struct SelfInspectionTemplatesListContent: View {
+    @Environment(SessionManager.self) private var session
     let projectId: String
-    let accessToken: String
     @Bindable var model: SelfInspectionTemplatesListViewModel
     @Binding var navigateTo: SelfInspectionTemplateRoute?
 
@@ -281,11 +325,35 @@ private struct SelfInspectionTemplatesListContent: View {
                 .padding(.bottom, 12)
 
             if let err = model.errorMessage {
-                Text(err)
-                    .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.tertiary)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(TacticalGlassTheme.tertiary)
+                        Text("無法載入樣板")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("重試") {
+                        Task { await model.load(projectId: projectId, session: session) }
+                    }
+                    .buttonStyle(TacticalSecondaryButtonStyle())
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
             }
 
             if model.isLoading && model.templates.isEmpty {
@@ -325,9 +393,11 @@ private struct SelfInspectionTemplatesListContent: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin, for: .scrollContent)
+                .scrollDismissesKeyboard(.interactively)
                 .environment(\.defaultMinListRowHeight, 8)
                 .refreshable {
-                    await model.load(projectId: projectId, token: accessToken)
+                    await model.load(projectId: projectId, session: session)
                 }
             }
         }
@@ -371,9 +441,9 @@ private struct SelfInspectionTemplatesListContent: View {
 
 struct SelfInspectionTemplateRecordsView: View {
     @Environment(SessionManager.self) private var session
+    @Environment(FieldOutboxStore.self) private var outbox
 
     let projectId: String
-    let accessToken: String
     let templateId: String
     let templateName: String
 
@@ -398,33 +468,78 @@ struct SelfInspectionTemplateRecordsView: View {
         return failId
     }
 
+    private var pendingSelfInspectionRecords: [FieldOutboxIndexRecord] {
+        outbox.records(forProjectId: projectId).filter {
+            $0.kind == .selfInspectionRecordCreate && $0.templateId == templateId
+        }
+    }
+
+    private var showRecordsEmptyPlaceholder: Bool {
+        model.records.isEmpty && pendingSelfInspectionRecords.isEmpty
+    }
+
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(alignment: .leading, spacing: 0) {
                 if let err = model.errorMessage {
-                    Text(err)
-                        .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(TacticalGlassTheme.tertiary)
+                            Text("無法載入紀錄")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                        }
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("重試") {
+                            Task { await reloadHubAndRecords() }
+                        }
+                        .buttonStyle(TacticalSecondaryButtonStyle())
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
                 }
 
-                if model.isLoading && model.records.isEmpty {
+                if model.isLoading && showRecordsEmptyPlaceholder {
                     Spacer()
                     ProgressView("載入中…")
                         .tint(TacticalGlassTheme.primary)
                         .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         .frame(maxWidth: .infinity)
                     Spacer()
-                } else if model.records.isEmpty {
+                } else if showRecordsEmptyPlaceholder {
                     Spacer()
-                    Text("尚無查驗紀錄")
-                        .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                        .frame(maxWidth: .infinity)
+                    VStack(spacing: 8) {
+                        Image(systemName: "tray")
+                            .font(.title2)
+                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        Text("尚無查驗紀錄")
+                            .font(.subheadline)
+                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    }
+                    .frame(maxWidth: .infinity)
                     Spacer()
                 } else {
                     List {
+                        ForEach(pendingSelfInspectionRecords) { rec in
+                            selfInspectionPendingOutboxRow(rec)
+                                .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                        }
                         ForEach(model.records) { rec in
                             Button {
                                 navigateToRecordId = rec.id
@@ -455,9 +570,33 @@ struct SelfInspectionTemplateRecordsView: View {
                                 }
                             }
                         }
+                        if model.hasMore {
+                            Button {
+                                Task { await model.loadMore(projectId: projectId, templateId: templateId, session: session) }
+                            } label: {
+                                HStack {
+                                    if model.isLoadingMore {
+                                        ProgressView()
+                                            .tint(TacticalGlassTheme.primary)
+                                    }
+                                    Text(model.isLoadingMore ? "載入中…" : "載入更多")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(TacticalGlassTheme.primary)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .disabled(model.isLoadingMore)
+                        }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin, for: .scrollContent)
+                    .scrollDismissesKeyboard(.interactively)
                     .environment(\.defaultMinListRowHeight, 8)
                     .refreshable {
                         await reloadHubAndRecords()
@@ -488,7 +627,7 @@ struct SelfInspectionTemplateRecordsView: View {
                 projectId: projectId,
                 templateId: templateId,
                 recordId: recordId,
-                accessToken: accessToken,
+                accessToken: session.accessToken ?? "",
                 projectDisplayName: session.selectedProjectName ?? ""
             ) {
                 await reloadHubAndRecords()
@@ -497,11 +636,16 @@ struct SelfInspectionTemplateRecordsView: View {
         .task {
             await reloadHubAndRecords()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldRemoteDataShouldRefresh)) { _ in
+            Task {
+                await reloadHubAndRecords()
+            }
+        }
         .sheet(isPresented: $showCreate) {
             NavigationStack {
                 SelfInspectionCreateRecordView(
                     projectId: projectId,
-                    accessToken: accessToken,
+                    accessToken: session.accessToken ?? "",
                     templateId: templateId,
                     projectDisplayName: session.selectedProjectName ?? ""
                 ) {
@@ -514,7 +658,7 @@ struct SelfInspectionTemplateRecordsView: View {
             NavigationStack {
                 SelfInspectionEditRecordView(
                     projectId: projectId,
-                    accessToken: accessToken,
+                    accessToken: session.accessToken ?? "",
                     templateId: templateId,
                     recordId: target.id,
                     projectDisplayName: session.selectedProjectName ?? ""
@@ -547,33 +691,69 @@ struct SelfInspectionTemplateRecordsView: View {
 
     private func reloadHubAndRecords() async {
         do {
-            let h = try await APIService.getSelfInspectionTemplateHub(
-                baseURL: AppConfiguration.apiRootURL,
-                token: accessToken,
-                projectId: projectId,
-                templateId: templateId
-            )
+            let h = try await session.withValidAccessToken { token in
+                try await APIService.getSelfInspectionTemplateHub(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    templateId: templateId
+                )
+            }
             templateHub = h
         } catch {
             templateHub = nil
         }
-        await model.load(projectId: projectId, templateId: templateId, token: accessToken)
+        await model.load(projectId: projectId, templateId: templateId, session: session)
     }
 
     private func deleteRecord(recordId: String) async {
         do {
-            try await APIService.deleteSelfInspectionRecord(
-                baseURL: AppConfiguration.apiRootURL,
-                token: accessToken,
-                projectId: projectId,
-                templateId: templateId,
-                recordId: recordId
-            )
+            try await session.withValidAccessToken { token in
+                try await APIService.deleteSelfInspectionRecord(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    templateId: templateId,
+                    recordId: recordId
+                )
+            }
             await reloadHubAndRecords()
         } catch {
             await MainActor.run {
                 model.errorMessage = (error as? APIRequestError)?.localizedDescription ?? error.localizedDescription
             }
+        }
+    }
+
+    private func selfInspectionPendingOutboxRow(_ rec: FieldOutboxIndexRecord) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(rec.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Text("待上傳")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(TacticalGlassTheme.primary.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            Text("連線後將建立於伺服器。")
+                .font(.footnote)
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                .strokeBorder(TacticalGlassTheme.primary.opacity(0.28), lineWidth: 1)
         }
     }
 

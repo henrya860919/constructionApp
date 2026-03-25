@@ -170,11 +170,11 @@ struct SelfInspectionRecordDetailDTO: Decodable, Identifiable, Sendable {
     let structureSnapshot: SelfInspectionStructureSnapshotDTO?
 }
 
-struct SelfInspectionCreateRecordBody: Encodable, Sendable {
+struct SelfInspectionCreateRecordBody: Codable, Sendable {
     let filledPayload: SelfInspectionFilledPayloadEncodable
 }
 
-struct SelfInspectionFilledPayloadEncodable: Encodable, Sendable {
+struct SelfInspectionFilledPayloadEncodable: Codable, Sendable {
     let header: SelfInspectionHeaderValuesEncodable
     let items: [String: SelfInspectionItemFillEncodable]
     let photoAttachmentIds: [String]?
@@ -191,9 +191,22 @@ struct SelfInspectionFilledPayloadEncodable: Encodable, Sendable {
             try c.encode(photoAttachmentIds, forKey: .photoAttachmentIds)
         }
     }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        header = try c.decode(SelfInspectionHeaderValuesEncodable.self, forKey: .header)
+        items = try c.decode([String: SelfInspectionItemFillEncodable].self, forKey: .items)
+        photoAttachmentIds = try c.decodeIfPresent([String].self, forKey: .photoAttachmentIds)
+    }
+
+    init(header: SelfInspectionHeaderValuesEncodable, items: [String: SelfInspectionItemFillEncodable], photoAttachmentIds: [String]?) {
+        self.header = header
+        self.items = items
+        self.photoAttachmentIds = photoAttachmentIds
+    }
 }
 
-struct SelfInspectionHeaderValuesEncodable: Encodable, Sendable {
+struct SelfInspectionHeaderValuesEncodable: Codable, Sendable {
     let inspectionName: String?
     let projectName: String?
     let subProjectName: String?
@@ -203,6 +216,6 @@ struct SelfInspectionHeaderValuesEncodable: Encodable, Sendable {
     let timingOptionId: String?
 }
 
-struct SelfInspectionItemFillEncodable: Encodable, Sendable {
+struct SelfInspectionItemFillEncodable: Codable, Sendable {
     let resultOptionId: String
 }

@@ -5,6 +5,7 @@
 //  缺失紀錄 — 列表／詳情／新增；UI 參考 SITE_OPS 戰術深色稿與 Tactical Obsidian 規範。
 //
 
+import Combine
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -64,28 +65,39 @@ final class DefectListViewModel {
     var items: [DefectListItemDTO] = []
     var meta: PageMetaDTO?
     var isLoading = false
+    var isLoadingMore = false
     var errorMessage: String?
     var statusFilter: DefectStatusFilter = .all
     /// 與搜尋框同步（debounce 後寫入）；列表 API 使用 `q`。
     var searchQuery = ""
 
+    var hasMore: Bool {
+        guard let meta else { return false }
+        return items.count < meta.total
+    }
+
     private var trimmedSearchQuery: String {
         searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func load(projectId: String, token: String) async {
+    func load(projectId: String, session: SessionManager) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             let q = trimmedSearchQuery.isEmpty ? nil : String(trimmedSearchQuery.prefix(200))
-            let env = try await APIService.listDefectImprovements(
-                baseURL: AppConfiguration.apiRootURL,
-                token: token,
-                projectId: projectId,
-                status: statusFilter.queryValue,
-                q: q
-            )
+            let status = statusFilter.queryValue
+            let env = try await session.withValidAccessToken { token in
+                try await APIService.listDefectImprovements(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    status: status,
+                    q: q,
+                    page: 1,
+                    limit: FieldListPagination.pageSize
+                )
+            }
             items = env.data
             meta = env.meta
         } catch let api as APIRequestError {
@@ -96,16 +108,49 @@ final class DefectListViewModel {
         }
     }
 
-    func deleteDefect(projectId: String, defectId: String, token: String) async {
+    func loadMore(projectId: String, session: SessionManager) async {
+        guard let m = meta, hasMore, !isLoadingMore, !isLoading else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        let nextPage = m.page + 1
+        do {
+            let q = trimmedSearchQuery.isEmpty ? nil : String(trimmedSearchQuery.prefix(200))
+            let status = statusFilter.queryValue
+            let env = try await session.withValidAccessToken { token in
+                try await APIService.listDefectImprovements(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    status: status,
+                    q: q,
+                    page: nextPage,
+                    limit: FieldListPagination.pageSize
+                )
+            }
+            let existing = Set(items.map(\.id))
+            let newRows = env.data.filter { !existing.contains($0.id) }
+            items.append(contentsOf: newRows)
+            meta = env.meta
+        } catch let api as APIRequestError {
+            errorMessage = api.localizedDescription
+        } catch {
+            guard !error.isIgnorableTaskCancellation else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteDefect(projectId: String, defectId: String, session: SessionManager) async {
         errorMessage = nil
         do {
-            try await APIService.deleteDefectImprovement(
-                baseURL: AppConfiguration.apiRootURL,
-                token: token,
-                projectId: projectId,
-                defectId: defectId
-            )
-            await load(projectId: projectId, token: token)
+            try await session.withValidAccessToken { token in
+                try await APIService.deleteDefectImprovement(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    defectId: defectId
+                )
+            }
+            await load(projectId: projectId, session: session)
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
         } catch {
@@ -121,153 +166,94 @@ private struct DefectEditSheetTarget: Identifiable {
     let id: String
 }
 
+private struct PendingDefectParentTarget: Identifiable {
+    let id: UUID
+}
+
 // MARK: - Module shell
 
 struct DeficiencyModuleView: View {
     @Environment(SessionManager.self) private var session
     @State private var model = DefectListViewModel()
-    @State private var showCreate = false
     @State private var fabScrollIdle = true
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Group {
-                if let pid = session.selectedProjectId, let token = session.accessToken {
-                    DefectListView(
-                        projectId: pid,
-                        accessToken: token,
-                        model: model,
-                        fabScrollIdle: $fabScrollIdle
-                    )
-                } else {
-                    Text("缺少專案或登入狀態")
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-
-            if session.selectedProjectId != nil, session.accessToken != nil {
-                Button {
-                    showCreate = true
-                } label: {
-                    ObsidianSquareFAB(accessibilityLabel: "新增缺失紀錄")
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 20)
-                .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
-                .opacity(fabScrollIdle ? 1 : 0)
-                .allowsHitTesting(fabScrollIdle)
-                .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
+        Group {
+            if let pid = session.selectedProjectId, session.isAuthenticated {
+                DefectListView(
+                    projectId: pid,
+                    model: model,
+                    fabScrollIdle: $fabScrollIdle
+                )
+            } else {
+                Text("缺少專案或登入狀態")
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(TacticalGlassTheme.surface)
-        .sheet(isPresented: $showCreate) {
-            if let pid = session.selectedProjectId, let token = session.accessToken {
-                NavigationStack {
-                    DefectCreateView(projectId: pid, accessToken: token) {
-                        await model.load(projectId: pid, token: token)
-                    }
-                }
-                .presentationDetents([.large])
-            }
-        }
     }
 }
 
 // MARK: - List
 
 struct DefectListView: View {
+    enum ListChrome {
+        case main
+        case searchSession
+    }
+
     let projectId: String
-    let accessToken: String
     @Bindable var model: DefectListViewModel
     @Binding var fabScrollIdle: Bool
+    var listChrome: ListChrome = .main
+
+    @Environment(FieldOutboxStore.self) private var outbox
+    @Environment(SessionManager.self) private var session
+
+    @State private var searchSessionPresented = false
+    @State private var showCreate = false
     @State private var searchFieldText = ""
     @State private var searchDebounceTask: Task<Void, Never>?
+    @FocusState private var searchFieldFocused: Bool
     @State private var defectIdPendingDelete: String?
     /// 不用 `NavigationLink`，避免 `List` 右側系統 disclosure 箭頭（卡片內已有「詳情」）。
     @State private var navigateToDefectId: String?
     @State private var defectEditSheetTarget: DefectEditSheetTarget?
+    @State private var pendingRecordSheetParent: PendingDefectParentTarget?
+
+    private var pendingDefects: [FieldOutboxIndexRecord] {
+        outbox.records(forProjectId: projectId).filter { $0.kind == .defectCreate }
+    }
+
+    private var showEmptyPlaceholder: Bool {
+        model.items.isEmpty && pendingDefects.isEmpty
+    }
+
+    private var listBottomContentMargin: CGFloat {
+        listChrome == .searchSession ? 28 : TacticalGlassTheme.tabBarScrollBottomMargin
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            obsidianModuleHeader(title: "缺失紀錄")
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-
-            defectSearchField
-                .padding(.horizontal, 20)
-                .padding(.bottom, 10)
-
-            filterPills
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
-
-            if let err = model.errorMessage {
-                Text(err)
-                    .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.tertiary)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
-            }
-
-            if model.isLoading && model.items.isEmpty {
-                Spacer()
-                ProgressView("載入中…")
-                    .tint(TacticalGlassTheme.primary)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else if model.items.isEmpty {
-                Spacer()
-                Text(model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "尚無缺失紀錄" : "查無符合的紀錄")
-                    .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else {
-                List {
-                    ForEach(model.items) { item in
-                        Button {
-                            navigateToDefectId = item.id
-                        } label: {
-                            defectCard(item)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                            Button {
-                                defectEditSheetTarget = DefectEditSheetTarget(id: item.id)
-                            } label: {
-                                Label("編輯", systemImage: "pencil")
-                            }
-                            .tint(TacticalGlassTheme.primary)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                defectIdPendingDelete = item.id
-                            } label: {
-                                Label("刪除", systemImage: "trash.fill")
-                            }
-                        }
+        Group {
+            if listChrome == .main {
+                mainChromeStack
+                    .navigationDestination(isPresented: $searchSessionPresented) {
+                        DefectListSearchSessionView(
+                            projectId: projectId,
+                            model: model,
+                            fabScrollIdle: $fabScrollIdle
+                        )
                     }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.defaultMinListRowHeight, 8)
-                .refreshable {
-                    await model.load(projectId: projectId, token: accessToken)
-                }
-                .fieldFABScrollIdleTracking($fabScrollIdle)
+            } else {
+                searchSessionChromeStack
             }
         }
         .navigationDestination(item: $navigateToDefectId) { defectId in
             DefectDetailView(
                 projectId: projectId,
                 defectId: defectId,
-                accessToken: accessToken
+                accessToken: session.accessToken ?? ""
             )
         }
         .sheet(item: $defectEditSheetTarget) { target in
@@ -275,17 +261,23 @@ struct DefectListView: View {
                 DefectEditView(
                     projectId: projectId,
                     defectId: target.id,
-                    accessToken: accessToken
+                    accessToken: session.accessToken ?? ""
                 ) {
-                    await model.load(projectId: projectId, token: accessToken)
+                    await model.load(projectId: projectId, session: session)
                 }
             }
             .presentationDetents([.large])
         }
         .task(id: model.statusFilter) {
-            await model.load(projectId: projectId, token: accessToken)
+            await model.load(projectId: projectId, session: session)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldRemoteDataShouldRefresh)) { _ in
+            Task {
+                await model.load(projectId: projectId, session: session)
+            }
         }
         .onChange(of: searchFieldText) { _, newValue in
+            guard listChrome == .searchSession else { return }
             searchDebounceTask?.cancel()
             searchDebounceTask = Task {
                 try? await Task.sleep(for: .milliseconds(400))
@@ -293,7 +285,15 @@ struct DefectListView: View {
                 await MainActor.run {
                     model.searchQuery = newValue
                 }
-                await model.load(projectId: projectId, token: accessToken)
+                await model.load(projectId: projectId, session: session)
+            }
+        }
+        .onAppear {
+            guard listChrome == .searchSession else { return }
+            searchFieldText = model.searchQuery
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(50))
+                searchFieldFocused = true
             }
         }
         .confirmationDialog(
@@ -308,44 +308,255 @@ struct DefectListView: View {
                 guard let id = defectIdPendingDelete else { return }
                 defectIdPendingDelete = nil
                 Task {
-                    await model.deleteDefect(projectId: projectId, defectId: id, token: accessToken)
+                    await model.deleteDefect(projectId: projectId, defectId: id, session: session)
                 }
             }
             Button("取消", role: .cancel) {
                 defectIdPendingDelete = nil
             }
         }
+        .sheet(item: $pendingRecordSheetParent) { target in
+            NavigationStack {
+                DefectRecordCreateView(
+                    projectId: projectId,
+                    pendingDefectOutboxParentId: target.id,
+                    accessToken: session.accessToken ?? ""
+                ) {
+                    await model.load(projectId: projectId, session: session)
+                }
+            }
+            .presentationDetents([.large])
+        }
     }
 
-    private var defectSearchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
-            TextField("搜尋說明、發現人、位置…", text: $searchFieldText)
-                .textFieldStyle(.plain)
-                .foregroundStyle(.white)
-                .submitLabel(.search)
-            if !searchFieldText.isEmpty {
+    private var mainChromeStack: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(alignment: .leading, spacing: 0) {
+                obsidianModuleHeader(title: "缺失紀錄")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+
                 Button {
-                    searchFieldText = ""
+                    searchSessionPresented = true
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.body)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                    ObsidianListSearchPillAffordance(
+                        placeholder: "搜尋說明、發現人、位置…",
+                        activeQuerySummary: model.searchQuery
+                    )
                 }
                 .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
+
+                filterPills
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+
+                resultsBlock
+            }
+
+            Button {
+                showCreate = true
+            } label: {
+                ObsidianSquareFAB(accessibilityLabel: "新增缺失紀錄")
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 20)
+            .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
+            .opacity(fabScrollIdle ? 1 : 0)
+            .allowsHitTesting(fabScrollIdle)
+            .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
+        }
+        .sheet(isPresented: $showCreate) {
+            if let token = session.accessToken {
+                NavigationStack {
+                    DefectCreateView(projectId: projectId, accessToken: token) {
+                        await model.load(projectId: projectId, session: session)
+                    }
+                }
+                .presentationDetents([.large])
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+    }
+
+    private var searchSessionChromeStack: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ObsidianSearchModePillField(
+                text: $searchFieldText,
+                placeholder: "搜尋說明、發現人、位置…",
+                isFocused: $searchFieldFocused
+            )
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
+
+            filterPills
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+
+            resultsBlock
+        }
+    }
+
+    @ViewBuilder
+    private var resultsBlock: some View {
+        if let err = model.errorMessage {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                    Text("無法載入列表")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("重試") {
+                    Task { await model.load(projectId: projectId, session: session) }
+                }
+                .buttonStyle(TacticalSecondaryButtonStyle())
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                    .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                    .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+        } else if model.isLoading && showEmptyPlaceholder {
+            Spacer()
+            ProgressView("載入中…")
+                .tint(TacticalGlassTheme.primary)
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .frame(maxWidth: .infinity)
+            Spacer()
+        } else if showEmptyPlaceholder {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: "tray")
+                    .font(.title2)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                Text(model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "尚無缺失紀錄" : "查無符合的紀錄")
+                    .font(.subheadline)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            Spacer()
+        } else {
+            List {
+                ForEach(pendingDefects) { rec in
+                    defectPendingOutboxRow(rec)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+                ForEach(model.items) { item in
+                    Button {
+                        navigateToDefectId = item.id
+                    } label: {
+                        defectCard(item)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button {
+                            defectEditSheetTarget = DefectEditSheetTarget(id: item.id)
+                        } label: {
+                            Label("編輯", systemImage: "pencil")
+                        }
+                        .tint(TacticalGlassTheme.primary)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            defectIdPendingDelete = item.id
+                        } label: {
+                            Label("刪除", systemImage: "trash.fill")
+                        }
+                    }
+                }
+                if model.hasMore {
+                    Button {
+                        Task { await model.loadMore(projectId: projectId, session: session) }
+                    } label: {
+                        HStack {
+                            if model.isLoadingMore {
+                                ProgressView()
+                                    .tint(TacticalGlassTheme.primary)
+                            }
+                            Text(model.isLoadingMore ? "載入中…" : "載入更多")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .disabled(model.isLoadingMore)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .contentMargins(.bottom, listBottomContentMargin, for: .scrollContent)
+            .scrollDismissesKeyboard(.interactively)
+            .environment(\.defaultMinListRowHeight, 8)
+            .refreshable {
+                await model.load(projectId: projectId, session: session)
+            }
+            .fieldFABScrollIdleTracking($fabScrollIdle)
+        }
+    }
+
+    private func defectPendingOutboxRow(_ rec: FieldOutboxIndexRecord) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(rec.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(3)
+                Spacer(minLength: 8)
+                Text("待上傳")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(TacticalGlassTheme.primary.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            Text("連線後將建立於伺服器；可先新增執行紀錄並一併上傳。")
+                .font(.caption)
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                pendingRecordSheetParent = PendingDefectParentTarget(id: rec.id)
+            } label: {
+                Text("新增執行紀錄")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(TacticalSecondaryButtonStyle())
+        }
+        .padding(14)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+                .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(TacticalGlassTheme.primary.opacity(0.25), lineWidth: 1)
         }
     }
 
@@ -515,6 +726,35 @@ struct DefectListView: View {
             .padding(.vertical, 4)
             .background(Capsule().fill(color.opacity(0.15)))
             .foregroundStyle(color)
+    }
+}
+
+private struct DefectListSearchSessionView: View {
+    @Environment(\.dismiss) private var dismiss
+    let projectId: String
+    @Bindable var model: DefectListViewModel
+    @Binding var fabScrollIdle: Bool
+
+    var body: some View {
+        DefectListView(
+            projectId: projectId,
+            model: model,
+            fabScrollIdle: $fabScrollIdle,
+            listChrome: .searchSession
+        )
+        .navigationBarBackButtonHidden(true)
+        .navigationTitle("搜尋缺失")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("取消") {
+                    dismiss()
+                }
+                .foregroundStyle(TacticalGlassTheme.primary)
+            }
+        }
     }
 }
 
@@ -751,6 +991,8 @@ struct DefectDetailView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin, for: .scrollContent)
+                .scrollDismissesKeyboard(.interactively)
                 .environment(\.defaultMinListRowHeight, 8)
             }
         }
@@ -843,7 +1085,7 @@ struct DefectDetailView: View {
                         .fill(TacticalGlassTheme.surfaceContainerLowest.opacity(0.65))
                 }
             } else {
-                TacticalPhotoAlbumGrid(photos: photos, accessToken: accessToken, columnCount: 3, spacing: 10)
+                TacticalPhotoAlbumGrid(photos: photos, columnCount: 3, spacing: 10)
             }
         }
     }
@@ -902,7 +1144,7 @@ struct DefectDetailView: View {
 
                 let pics = rec.photos ?? []
                 if !pics.isEmpty {
-                    TacticalPhotoAlbumGrid(photos: pics, accessToken: accessToken, columnCount: 3, spacing: 8)
+                    TacticalPhotoAlbumGrid(photos: pics, columnCount: 3, spacing: 8)
                 }
             }
         }
@@ -961,22 +1203,48 @@ final class DefectRecordCreateViewModel {
         }
     }
 
-    func submit(projectId: String, defectId: String, token: String) async -> Bool {
+    func submit(
+        projectId: String,
+        defectId: String?,
+        pendingDefectOutboxParentId: UUID?,
+        token: String,
+        outbox: FieldOutboxStore
+    ) async -> Bool {
         errorMessage = nil
         let text = contentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             errorMessage = "請填寫執行紀錄內容"
             return false
         }
+        let hasServer = defectId != nil && !(defectId!.isEmpty)
+        let hasPending = pendingDefectOutboxParentId != nil
+        guard hasServer || hasPending else {
+            errorMessage = "無法建立紀錄"
+            return false
+        }
+
+        if !FieldNetworkMonitor.shared.isReachable {
+            return await enqueueDefectRecordOutbox(
+                projectId: projectId,
+                defectId: defectId,
+                pendingDefectOutboxParentId: pendingDefectOutboxParentId,
+                text: text,
+                outbox: outbox
+            )
+        }
 
         isSubmitting = true
         defer { isSubmitting = false }
 
         do {
+            guard let did = defectId, !did.isEmpty else {
+                errorMessage = "此缺失尚未同步，請連線後再試或從待上傳項目新增紀錄"
+                return false
+            }
             var attachmentIds: [String] = []
             for item in photoPickerItems {
                 guard attachmentIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "record.\(ext)"
                 let mime = mimeForImage(data: data, fallbackExtension: ext)
@@ -1014,15 +1282,93 @@ final class DefectRecordCreateViewModel {
                 baseURL: AppConfiguration.apiRootURL,
                 token: token,
                 projectId: projectId,
-                defectId: defectId,
+                defectId: did,
                 body: body
             )
             return true
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
+            if case .transport = api {
+                return await enqueueDefectRecordOutbox(
+                    projectId: projectId,
+                    defectId: defectId,
+                    pendingDefectOutboxParentId: pendingDefectOutboxParentId,
+                    text: text,
+                    outbox: outbox
+                )
+            }
             return false
         } catch {
             guard !error.isIgnorableTaskCancellation else { return false }
+            if error.isLikelyConnectivityFailure {
+                return await enqueueDefectRecordOutbox(
+                    projectId: projectId,
+                    defectId: defectId,
+                    pendingDefectOutboxParentId: pendingDefectOutboxParentId,
+                    text: text,
+                    outbox: outbox
+                )
+            }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func enqueueDefectRecordOutbox(
+        projectId: String,
+        defectId: String?,
+        pendingDefectOutboxParentId: UUID?,
+        text: String,
+        outbox: FieldOutboxStore
+    ) async -> Bool {
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            var mediaData: [String: Data] = [:]
+            var photoMetas: [FieldOutboxMediaFile] = []
+            var idx = 0
+            for item in photoPickerItems {
+                guard idx < 30, let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
+                let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+                let fname = "record.\(ext)"
+                let mime = mimeForImage(data: data, fallbackExtension: ext)
+                let key = "d\(idx).\(ext)"
+                mediaData[key] = data
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: fname, mimeType: mime, category: "defect_record")
+                )
+                idx += 1
+            }
+            for (j, jpeg) in cameraPhotoJPEGs.enumerated() {
+                guard idx < 30 else { break }
+                let key = "dcam\(j).jpg"
+                mediaData[key] = jpeg
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: "camera.jpg", mimeType: "image/jpeg", category: "defect_record")
+                )
+                idx += 1
+            }
+            guard idx <= 30 else {
+                errorMessage = "照片最多 30 張"
+                return false
+            }
+
+            let payload = FieldOutboxDefectRecordPayload(
+                defectId: defectId,
+                dependsOnDefectOutboxId: pendingDefectOutboxParentId,
+                content: text,
+                photos: photoMetas
+            )
+            try outbox.enqueueDefectRecord(
+                projectId: projectId,
+                title: "缺失執行紀錄",
+                defectId: defectId,
+                dependsOnDefectOutboxId: pendingDefectOutboxParentId,
+                payload: payload,
+                mediaData: mediaData
+            )
+            return true
+        } catch {
             errorMessage = error.localizedDescription
             return false
         }
@@ -1041,10 +1387,28 @@ final class DefectRecordCreateViewModel {
 
 struct DefectRecordCreateView: View {
     let projectId: String
-    let defectId: String
+    let defectId: String?
+    let pendingDefectOutboxParentId: UUID?
     let accessToken: String
     var onFinished: () async -> Void
 
+    init(projectId: String, defectId: String, accessToken: String, onFinished: @escaping () async -> Void) {
+        self.projectId = projectId
+        self.defectId = defectId
+        self.pendingDefectOutboxParentId = nil
+        self.accessToken = accessToken
+        self.onFinished = onFinished
+    }
+
+    init(projectId: String, pendingDefectOutboxParentId: UUID, accessToken: String, onFinished: @escaping () async -> Void) {
+        self.projectId = projectId
+        self.defectId = nil
+        self.pendingDefectOutboxParentId = pendingDefectOutboxParentId
+        self.accessToken = accessToken
+        self.onFinished = onFinished
+    }
+
+    @Environment(FieldOutboxStore.self) private var fieldOutbox
     @Environment(\.dismiss) private var dismiss
     @State private var createModel = DefectRecordCreateViewModel()
     @State private var showCamera = false
@@ -1087,7 +1451,6 @@ struct DefectRecordCreateView: View {
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                             .tracking(0.8)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: [],
                             localPreviewImages: model.mergedLocalPhotoPreviews,
                             onRemoveRemote: { _ in },
@@ -1113,7 +1476,13 @@ struct DefectRecordCreateView: View {
 
                 Button {
                     Task {
-                        let ok = await createModel.submit(projectId: projectId, defectId: defectId, token: accessToken)
+                        let ok = await createModel.submit(
+                            projectId: projectId,
+                            defectId: defectId,
+                            pendingDefectOutboxParentId: pendingDefectOutboxParentId,
+                            token: accessToken,
+                            outbox: fieldOutbox
+                        )
                         if ok {
                             await onFinished()
                             dismiss()
@@ -1143,7 +1512,7 @@ struct DefectRecordCreateView: View {
             }
             .ignoresSafeArea()
         }
-        .navigationTitle("新增執行紀錄")
+        .navigationTitle(pendingDefectOutboxParentId != nil ? "新增紀錄（待同步缺失）" : "新增執行紀錄")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -1246,7 +1615,7 @@ final class DefectEditViewModel {
             var newIds: [String] = []
             for item in photoPickerItems {
                 guard newIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "defect.\(ext)"
                 let mime = defectMimeForImageData(data: data, fallbackExtension: ext)
@@ -1385,7 +1754,6 @@ struct DefectEditView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: edit.committedPhotoIds,
                             localPreviewImages: edit.mergedLocalPhotoPreviews,
                             onRemoveRemote: { id in edit.committedPhotoIds.removeAll { $0 == id } },
@@ -1557,7 +1925,6 @@ struct DefectRecordEditView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: committedPhotoIds,
                             localPreviewImages: mergedLocalPhotoPreviews,
                             onRemoveRemote: { id in committedPhotoIds.removeAll { $0 == id } },
@@ -1640,7 +2007,7 @@ struct DefectRecordEditView: View {
             var newIds: [String] = []
             for item in photoPickerItems {
                 guard newIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "record.\(ext)"
                 let mime = defectMimeForImageData(data: data, fallbackExtension: ext)
@@ -1747,7 +2114,7 @@ final class DefectCreateViewModel {
         }
     }
 
-    func submit(projectId: String, token: String) async -> Bool {
+    func submit(projectId: String, token: String, outbox: FieldOutboxStore) async -> Bool {
         errorMessage = nil
         let desc = descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
         let by = discoveredBy.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1760,6 +2127,10 @@ final class DefectCreateViewModel {
             return false
         }
 
+        if !FieldNetworkMonitor.shared.isReachable {
+            return await enqueueDefectCreateOutbox(projectId: projectId, desc: desc, by: by, outbox: outbox)
+        }
+
         isSubmitting = true
         defer { isSubmitting = false }
 
@@ -1767,7 +2138,7 @@ final class DefectCreateViewModel {
             var attachmentIds: [String] = []
             for item in photoPickerItems {
                 guard attachmentIds.count < 30 else { break }
-                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
                 let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
                 let fname = "defect.\(ext)"
                 let mime = mimeForImage(data: data, fallbackExtension: ext)
@@ -1819,9 +2190,70 @@ final class DefectCreateViewModel {
             return true
         } catch let api as APIRequestError {
             errorMessage = api.localizedDescription
+            if case .transport = api {
+                return await enqueueDefectCreateOutbox(projectId: projectId, desc: desc, by: by, outbox: outbox)
+            }
             return false
         } catch {
             guard !error.isIgnorableTaskCancellation else { return false }
+            if error.isLikelyConnectivityFailure {
+                return await enqueueDefectCreateOutbox(projectId: projectId, desc: desc, by: by, outbox: outbox)
+            }
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func enqueueDefectCreateOutbox(projectId: String, desc: String, by: String, outbox: FieldOutboxStore) async -> Bool {
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            var mediaData: [String: Data] = [:]
+            var photoMetas: [FieldOutboxMediaFile] = []
+            var idx = 0
+            for item in photoPickerItems {
+                guard idx < 30, let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
+                let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+                let fname = "defect.\(ext)"
+                let mime = mimeForImage(data: data, fallbackExtension: ext)
+                let key = "df\(idx).\(ext)"
+                mediaData[key] = data
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: fname, mimeType: mime, category: "defect")
+                )
+                idx += 1
+            }
+            for (j, jpeg) in cameraPhotoJPEGs.enumerated() {
+                guard idx < 30 else { break }
+                let key = "dfcam\(j).jpg"
+                mediaData[key] = jpeg
+                photoMetas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: "camera.jpg", mimeType: "image/jpeg", category: "defect")
+                )
+                idx += 1
+            }
+            guard idx <= 30 else {
+                errorMessage = "照片最多 30 張"
+                return false
+            }
+
+            let payload = FieldOutboxDefectCreatePayload(
+                description: desc,
+                discoveredBy: by,
+                priority: priority,
+                floor: floor.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                location: location.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                status: status,
+                photos: photoMetas
+            )
+            try outbox.enqueueDefectCreate(
+                projectId: projectId,
+                title: String(desc.prefix(40)) + (desc.count > 40 ? "…" : ""),
+                payload: payload,
+                mediaData: mediaData
+            )
+            return true
+        } catch {
             errorMessage = error.localizedDescription
             return false
         }
@@ -1843,6 +2275,7 @@ struct DefectCreateView: View {
     let accessToken: String
     var onFinished: () async -> Void
 
+    @Environment(FieldOutboxStore.self) private var fieldOutbox
     @Environment(\.dismiss) private var dismiss
     @State private var createModel = DefectCreateViewModel()
     @State private var showCamera = false
@@ -1917,7 +2350,6 @@ struct DefectCreateView: View {
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                             .tracking(0.8)
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: [],
                             localPreviewImages: vm.mergedLocalPhotoPreviews,
                             onRemoveRemote: { _ in },
@@ -1943,7 +2375,7 @@ struct DefectCreateView: View {
 
                 Button {
                     Task {
-                        let ok = await createModel.submit(projectId: projectId, token: accessToken)
+                        let ok = await createModel.submit(projectId: projectId, token: accessToken, outbox: fieldOutbox)
                         if ok {
                             dismiss()
                             await onFinished()

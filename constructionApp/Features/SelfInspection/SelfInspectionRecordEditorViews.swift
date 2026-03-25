@@ -105,7 +105,7 @@ private func uploadSelfInspectionPickerPhotos(
     ids.reserveCapacity(min(items.count, maxTotal))
     for item in items {
         guard ids.count < maxTotal else { break }
-        guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+        guard let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
         let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
         let fname = "photo.\(ext)"
         let mime = mimeForSelfInspectionImage(data: data, fallbackExtension: ext)
@@ -259,7 +259,6 @@ private struct SelfInspectionRecordFormScrollContent: View {
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
 
                         FieldFormPhotoStrip(
-                            accessToken: accessToken,
                             remotePhotoIds: form.committedPhotoIds,
                             localPreviewImages: form.mergedLocalPhotoPreviews,
                             onRemoveRemote: { id in form.committedPhotoIds.removeAll { $0 == id } },
@@ -451,6 +450,7 @@ struct SelfInspectionCreateRecordView: View {
     let projectDisplayName: String
     var onFinished: () async -> Void
 
+    @Environment(FieldOutboxStore.self) private var fieldOutbox
     @Environment(\.dismiss) private var dismiss
     @State private var hub: SelfInspectionTemplateHubDTO?
     @State private var loadError: String?
@@ -547,6 +547,29 @@ struct SelfInspectionCreateRecordView: View {
 
     private func submit() async {
         guard let hub else { return }
+        var baseErr: String?
+        guard let baseCommittedBody = buildSelfInspectionSubmitBody(
+            form: form,
+            hub: hub,
+            projectDisplayName: projectDisplayName,
+            photoAttachmentIds: form.committedPhotoIds,
+            submitError: &baseErr
+        ) else {
+            submitError = baseErr
+            return
+        }
+
+        if !FieldNetworkMonitor.shared.isReachable {
+            isSubmitting = true
+            defer { isSubmitting = false }
+            let ok = await enqueueSelfInspectionOffline(hub: hub, baseBody: baseCommittedBody)
+            if ok {
+                await onFinished()
+                dismiss()
+            }
+            return
+        }
+
         isSubmitting = true
         defer { isSubmitting = false }
         do {
@@ -595,10 +618,75 @@ struct SelfInspectionCreateRecordView: View {
             await onFinished()
             dismiss()
         } catch let api as APIRequestError {
+            if case .transport = api {
+                let ok = await enqueueSelfInspectionOffline(hub: hub, baseBody: baseCommittedBody)
+                if ok {
+                    await onFinished()
+                    dismiss()
+                } else if submitError == nil {
+                    submitError = api.localizedDescription
+                }
+                return
+            }
             submitError = api.localizedDescription
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
+            if error.isLikelyConnectivityFailure {
+                let ok = await enqueueSelfInspectionOffline(hub: hub, baseBody: baseCommittedBody)
+                if ok {
+                    await onFinished()
+                    dismiss()
+                }
+                return
+            }
             submitError = error.localizedDescription
+        }
+    }
+
+    private func enqueueSelfInspectionOffline(hub: SelfInspectionTemplateHubDTO, baseBody: SelfInspectionCreateRecordBody) async -> Bool {
+        do {
+            let maxNew = max(0, 30 - form.committedPhotoIds.count)
+            var mediaData: [String: Data] = [:]
+            var metas: [FieldOutboxMediaFile] = []
+            var idx = 0
+            for item in form.photoPickerItems {
+                guard idx < maxNew, let data = await FieldPhotoUploadEncoding.jpegDataForUpload(fromPickerItem: item) else { continue }
+                let ext = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
+                let fname = "photo.\(ext)"
+                let mime = mimeForSelfInspectionImage(data: data, fallbackExtension: ext)
+                let key = "si\(idx).\(ext)"
+                mediaData[key] = data
+                metas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: fname, mimeType: mime, category: "self_inspection_photo")
+                )
+                idx += 1
+            }
+            for (j, jpeg) in form.cameraPhotoJPEGs.enumerated() {
+                guard idx < maxNew else { break }
+                let key = "sicam\(j).jpg"
+                mediaData[key] = jpeg
+                metas.append(
+                    FieldOutboxMediaFile(storedName: key, uploadFileName: "camera.jpg", mimeType: "image/jpeg", category: "self_inspection_photo")
+                )
+                idx += 1
+            }
+            guard form.committedPhotoIds.count + idx <= 30 else {
+                submitError = "照片最多 30 張"
+                return false
+            }
+
+            let titlePrefix = form.inspectionName.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? hub.template.name
+            try fieldOutbox.enqueueSelfInspectionRecord(
+                projectId: projectId,
+                templateId: templateId,
+                title: titlePrefix,
+                payload: FieldOutboxSelfInspectionPayload(templateId: templateId, baseBody: baseBody, newPhotos: metas),
+                mediaData: mediaData
+            )
+            return true
+        } catch {
+            submitError = error.localizedDescription
+            return false
         }
     }
 }
@@ -1009,8 +1097,7 @@ struct SelfInspectionRecordDetailView: View {
                                             createdAt: "",
                                             url: "/api/v1/files/\(id)"
                                         )
-                                    },
-                                    accessToken: accessToken
+                                    }
                                 ),
                                 columnCount: 3,
                                 spacing: 10

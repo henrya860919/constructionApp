@@ -8,13 +8,44 @@ import Security
 
 enum KeychainHelper {
     private static let service = "com.lyztw.constructionApp.auth"
+    private static let accessAccount = "accessToken"
+    private static let refreshAccount = "refreshToken"
 
     static func saveToken(_ token: String) {
-        let data = Data(token.utf8)
+        saveGeneric(account: accessAccount, value: token)
+    }
+
+    static func readToken() -> String? {
+        readGeneric(account: accessAccount)
+    }
+
+    static func deleteToken() {
+        deleteGeneric(account: accessAccount)
+    }
+
+    static func saveRefreshToken(_ token: String) {
+        saveGeneric(account: refreshAccount, value: token)
+    }
+
+    static func readRefreshToken() -> String? {
+        readGeneric(account: refreshAccount)
+    }
+
+    static func deleteRefreshToken() {
+        deleteGeneric(account: refreshAccount)
+    }
+
+    static func deleteAllAuthSecrets() {
+        deleteToken()
+        deleteRefreshToken()
+    }
+
+    private static func saveGeneric(account: String, value: String) {
+        let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: "accessToken",
+            kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
         var attrs = query
@@ -23,11 +54,11 @@ enum KeychainHelper {
         SecItemAdd(attrs as CFDictionary, nil)
     }
 
-    static func readToken() -> String? {
+    private static func readGeneric(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: "accessToken",
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -37,11 +68,11 @@ enum KeychainHelper {
         return String(data: data, encoding: .utf8)
     }
 
-    static func deleteToken() {
+    private static func deleteGeneric(account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: "accessToken",
+            kSecAttrAccount as String: account,
         ]
         SecItemDelete(query as CFDictionary)
     }

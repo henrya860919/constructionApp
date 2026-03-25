@@ -25,7 +25,8 @@ enum APIService {
         return e
     }()
 
-    static func login(baseURL: URL, email: String, password: String) async throws -> (token: String, user: AuthUser) {
+    static func login(baseURL: URL, email: String, password: String) async throws -> LoginResult {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         let url = baseURL.appendingPathComponent("auth/login")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -35,10 +36,45 @@ enum APIService {
         let (data, response) = try await urlSession.data(for: req)
         try throwIfHTTPError(data: data, response: response)
         let parsed = try decoder.decode(LoginResponse.self, from: data)
-        return (parsed.data.accessToken, parsed.data.user)
+        let d = parsed.data
+        return LoginResult(accessToken: d.accessToken, refreshToken: d.refreshToken, user: d.user)
+    }
+
+    /// `GET /app/version`（公開）
+    static func fetchAppVersion(baseURL: URL) async throws -> AppVersionDTO {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
+        let url = baseURL.appendingPathComponent("app").appendingPathComponent("version")
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        let (data, response) = try await urlSession.data(for: req)
+        try throwIfHTTPError(data: data, response: response)
+        return try decoder.decode(AppVersionEnvelope.self, from: data).data
+    }
+
+    static func refreshSessionTokens(baseURL: URL, refreshToken: String) async throws -> RefreshTokenEnvelope.DataPart {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
+        let url = baseURL.appendingPathComponent("auth").appendingPathComponent("refresh")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try encoder.encode(["refreshToken": refreshToken])
+        let (data, response) = try await urlSession.data(for: req)
+        try throwIfHTTPError(data: data, response: response)
+        return try decoder.decode(RefreshTokenEnvelope.self, from: data).data
+    }
+
+    static func logout(baseURL: URL, token: String) async throws {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
+        let url = baseURL.appendingPathComponent("auth").appendingPathComponent("logout")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await urlSession.data(for: req)
+        try throwIfHTTPError(data: data, response: response)
     }
 
     static func fetchMe(baseURL: URL, token: String) async throws -> AuthUser {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         let url = baseURL.appendingPathComponent("auth/me")
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
@@ -48,7 +84,12 @@ enum APIService {
         return try decoder.decode(MeResponse.self, from: data).data
     }
 
-    static func listProjects(baseURL: URL, token: String, page: Int = 1, limit: Int = 50) async throws -> [ProjectSummary] {
+    static func listProjects(
+        baseURL: URL,
+        token: String,
+        page: Int = 1,
+        limit: Int = FieldListPagination.pageSize
+    ) async throws -> ProjectListResponse {
         var components = URLComponents(url: baseURL.appendingPathComponent("projects"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "page", value: "\(page)"),
@@ -59,7 +100,7 @@ enum APIService {
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await urlSession.data(for: req)
         try throwIfHTTPError(data: data, response: response)
-        return try decoder.decode(ProjectListResponse.self, from: data).data
+        return try decoder.decode(ProjectListResponse.self, from: data)
     }
 
     // MARK: - 報修 repair-requests
@@ -71,7 +112,7 @@ enum APIService {
         status: String?,
         q: String? = nil,
         page: Int = 1,
-        limit: Int = 20
+        limit: Int = FieldListPagination.pageSize
     ) async throws -> RepairListEnvelope {
         let base = baseURL
             .appendingPathComponent("projects")
@@ -160,6 +201,7 @@ enum APIService {
         body.append("\r\n".data(using: .utf8)!)
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -272,7 +314,7 @@ enum APIService {
         status: String?,
         q: String? = nil,
         page: Int = 1,
-        limit: Int = 20
+        limit: Int = FieldListPagination.pageSize
     ) async throws -> DefectListEnvelope {
         let base = baseURL
             .appendingPathComponent("projects")
@@ -446,7 +488,7 @@ enum APIService {
         projectId: String,
         templateId: String,
         page: Int = 1,
-        limit: Int = 50
+        limit: Int = FieldListPagination.pageSize
     ) async throws -> SelfInspectionRecordsEnvelope {
         let base = baseURL
             .appendingPathComponent("projects")
@@ -458,7 +500,7 @@ enum APIService {
         var components = URLComponents(url: base, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "page", value: "\(page)"),
-            URLQueryItem(name: "limit", value: "\(min(50, max(1, limit)))"),
+            URLQueryItem(name: "limit", value: "\(max(1, limit))"),
         ]
         guard let url = components.url else { throw APIRequestError.invalidURL }
         return try await authorizedGET(SelfInspectionRecordsEnvelope.self, url: url, token: token)
@@ -548,6 +590,7 @@ enum APIService {
 
     /// 下載需 Authorization 的檔案（例如 `/api/v1/files/:id`）。
     static func fetchAuthorizedData(url: URL, token: String) async throws -> Data {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -557,6 +600,7 @@ enum APIService {
     }
 
     private static func authorizedGET<T: Decodable>(_ type: T.Type, url: URL, token: String) async throws -> T {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -571,6 +615,7 @@ enum APIService {
         token: String,
         body: B
     ) async throws -> T {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -582,6 +627,7 @@ enum APIService {
     }
 
     private static func authorizedDELETE(url: URL, token: String) async throws {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         var req = URLRequest(url: url)
         req.httpMethod = "DELETE"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -595,6 +641,7 @@ enum APIService {
         token: String,
         body: B
     ) async throws -> T {
+        try AppConfiguration.validateAPIBaseIsSecureForRequests()
         var req = URLRequest(url: url)
         req.httpMethod = "PATCH"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
