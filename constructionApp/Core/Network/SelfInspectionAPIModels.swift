@@ -13,7 +13,7 @@ struct SelfInspectionTemplatesEnvelope: Decodable, Sendable {
     let data: [SelfInspectionProjectTemplateDTO]
 }
 
-struct SelfInspectionProjectTemplateDTO: Decodable, Identifiable, Sendable {
+struct SelfInspectionProjectTemplateDTO: Codable, Identifiable, Sendable {
     let id: String
     let tenantId: String
     let name: String
@@ -31,13 +31,13 @@ struct SelfInspectionTemplateHubEnvelope: Decodable, Sendable {
     let data: SelfInspectionTemplateHubDTO
 }
 
-struct SelfInspectionTemplateHubDTO: Decodable, Sendable {
+struct SelfInspectionTemplateHubDTO: Codable, Sendable {
     let template: SelfInspectionTemplateDetailDTO
     let blocks: [SelfInspectionBlockDTO]
     let recordCount: Int
 }
 
-struct SelfInspectionTemplateDetailDTO: Decodable, Sendable {
+struct SelfInspectionTemplateDetailDTO: Codable, Sendable {
     let id: String
     let tenantId: String
     let name: String
@@ -48,7 +48,7 @@ struct SelfInspectionTemplateDetailDTO: Decodable, Sendable {
     let updatedAt: String
 }
 
-struct SelfInspectionHeaderConfigDTO: Decodable, Sendable {
+struct SelfInspectionHeaderConfigDTO: Codable, Sendable {
     let inspectionNameLabel: String?
     let projectNameLabel: String
     let subProjectLabel: String
@@ -61,12 +61,12 @@ struct SelfInspectionHeaderConfigDTO: Decodable, Sendable {
     let resultLegendOptions: [SelfInspectionOptionDTO]
 }
 
-struct SelfInspectionOptionDTO: Decodable, Sendable, Identifiable {
+struct SelfInspectionOptionDTO: Codable, Sendable, Identifiable {
     let id: String
     let label: String
 }
 
-struct SelfInspectionBlockDTO: Decodable, Identifiable, Sendable {
+struct SelfInspectionBlockDTO: Codable, Identifiable, Sendable {
     let id: String
     let templateId: String
     let title: String
@@ -77,7 +77,7 @@ struct SelfInspectionBlockDTO: Decodable, Identifiable, Sendable {
     let items: [SelfInspectionBlockItemDTO]
 }
 
-struct SelfInspectionBlockItemDTO: Decodable, Identifiable, Sendable {
+struct SelfInspectionBlockItemDTO: Codable, Identifiable, Sendable {
     let id: String
     let blockId: String
     let categoryLabel: String
@@ -95,13 +95,13 @@ struct SelfInspectionRecordsEnvelope: Decodable, Sendable {
     let meta: PageMetaDTO
 }
 
-struct SelfInspectionFilledByDTO: Decodable, Sendable {
+struct SelfInspectionFilledByDTO: Codable, Sendable {
     let id: String
     let name: String?
     let email: String?
 }
 
-struct SelfInspectionRecordListDTO: Decodable, Identifiable, Sendable {
+struct SelfInspectionRecordListDTO: Codable, Identifiable, Sendable {
     let id: String
     let projectId: String
     let templateId: String
@@ -112,19 +112,19 @@ struct SelfInspectionRecordListDTO: Decodable, Identifiable, Sendable {
     let updatedAt: String
 }
 
-struct SelfInspectionItemFillLight: Decodable, Sendable {
+struct SelfInspectionItemFillLight: Codable, Sendable {
     let resultOptionId: String?
     let actualText: String?
 }
 
 /// Decodes `filledPayload`（列表／詳情共用；可含 `items` 供進度統計）
-struct SelfInspectionFilledPayloadLight: Decodable, Sendable {
+struct SelfInspectionFilledPayloadLight: Codable, Sendable {
     let header: SelfInspectionHeaderSnapshot?
     let items: [String: SelfInspectionItemFillLight]?
     let photoAttachmentIds: [String]?
 }
 
-struct SelfInspectionHeaderSnapshot: Decodable, Sendable {
+struct SelfInspectionHeaderSnapshot: Codable, Sendable {
     let inspectionName: String?
     let projectName: String?
     let subProjectName: String?
@@ -136,7 +136,7 @@ struct SelfInspectionHeaderSnapshot: Decodable, Sendable {
 
 // MARK: - Structure snapshot（紀錄詳情；與 template hub 同形）
 
-struct SelfInspectionStructureSnapshotDTO: Decodable, Sendable {
+struct SelfInspectionStructureSnapshotDTO: Codable, Sendable {
     let template: SelfInspectionTemplateDetailDTO
     let blocks: [SelfInspectionBlockDTO]
     let recordCount: Int?
@@ -158,7 +158,7 @@ struct SelfInspectionRecordDetailEnvelope: Decodable, Sendable {
     let data: SelfInspectionRecordDetailDTO
 }
 
-struct SelfInspectionRecordDetailDTO: Decodable, Identifiable, Sendable {
+struct SelfInspectionRecordDetailDTO: Codable, Identifiable, Sendable {
     let id: String
     let projectId: String
     let templateId: String

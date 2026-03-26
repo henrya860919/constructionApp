@@ -537,11 +537,21 @@ struct SelfInspectionCreateRecordView: View {
             if form.timingOptionId.isEmpty, let first = opts.first {
                 form.timingOptionId = first.id
             }
-        } catch let api as APIRequestError {
-            loadError = api.localizedDescription
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
-            loadError = error.localizedDescription
+            if error.isLikelyConnectivityFailure,
+               let snap = FieldSelfInspectionTemplateRecordsSnapshotStore.load(projectId: projectId, templateId: templateId) {
+                hub = snap.hub
+                loadError = nil
+                let opts = snap.hub.template.headerConfig.timingOptions
+                if form.timingOptionId.isEmpty, let first = opts.first {
+                    form.timingOptionId = first.id
+                }
+            } else if let api = error as? APIRequestError {
+                loadError = api.localizedDescription
+            } else {
+                loadError = error.localizedDescription
+            }
         }
     }
 
@@ -865,24 +875,64 @@ struct SelfInspectionEditRecordView: View {
     }
 }
 
+// MARK: - 離線待上傳 → 詳情 DTO
+
+private enum SelfInspectionPendingDetailFactory {
+    static func makeDetail(entry: FieldOutboxIndexRecord, payload: FieldOutboxSelfInspectionPayload) -> SelfInspectionRecordDetailDTO {
+        let fp = payload.baseBody.filledPayload
+        let header = SelfInspectionHeaderSnapshot(
+            inspectionName: fp.header.inspectionName,
+            projectName: fp.header.projectName,
+            subProjectName: fp.header.subProjectName,
+            subcontractor: fp.header.subcontractor,
+            inspectionLocation: fp.header.inspectionLocation,
+            inspectionDate: fp.header.inspectionDate,
+            timingOptionId: fp.header.timingOptionId
+        )
+        let itemsLight = Dictionary(uniqueKeysWithValues: fp.items.map { key, val in
+            (key, SelfInspectionItemFillLight(resultOptionId: val.resultOptionId, actualText: nil))
+        })
+        let light = SelfInspectionFilledPayloadLight(header: header, items: itemsLight, photoAttachmentIds: fp.photoAttachmentIds)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let created = iso.string(from: entry.createdAt)
+        return SelfInspectionRecordDetailDTO(
+            id: entry.id.uuidString,
+            projectId: entry.projectId,
+            templateId: payload.templateId,
+            filledPayload: light,
+            filledById: nil,
+            filledBy: nil,
+            createdAt: created,
+            updatedAt: created,
+            structureSnapshot: nil
+        )
+    }
+}
+
 // MARK: - Detail (read-only)
 
 struct SelfInspectionRecordDetailView: View {
     let projectId: String
     let templateId: String
     let recordId: String
+    /// 非 nil 時自 Outbox 組詳情（離線新增待上傳），不呼叫伺服器。
+    var pendingOutboxEntryId: UUID?
     let accessToken: String
     let projectDisplayName: String
     var onChanged: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(FieldOutboxStore.self) private var fieldOutbox
     @State private var record: SelfInspectionRecordDetailDTO?
     @State private var hub: SelfInspectionTemplateHubDTO?
     @State private var loadError: String?
+    @State private var loadFailureIsConnectivity = false
     @State private var isLoading = true
     @State private var showEdit = false
     @State private var showDeleteConfirm = false
     @State private var actionError: String?
+    @State private var pendingLocalPreviewImages: [UIImage] = []
 
     private var expectedItemIds: Set<String> {
         guard let hub else { return [] }
@@ -896,13 +946,17 @@ struct SelfInspectionRecordDetailView: View {
                     .tint(TacticalGlassTheme.primary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = loadError {
-                Text(err)
-                    .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(24)
+                FieldCenteredRecordLoadErrorView(
+                    isConnectivityOrOffline: loadFailureIsConnectivity,
+                    localizedErrorDetail: loadFailureIsConnectivity ? nil : err
+                )
             } else if let record, let hub {
-                detailScroll(record: record, hub: hub)
+                detailScroll(
+                    record: record,
+                    hub: hub,
+                    pendingLocalImages: pendingLocalPreviewImages,
+                    showPendingPhotoSection: pendingOutboxEntryId != nil
+                )
             }
         }
         .background(TacticalGlassTheme.surface)
@@ -911,24 +965,29 @@ struct SelfInspectionRecordDetailView: View {
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button {
-                        showEdit = true
+            if pendingOutboxEntryId == nil, record != nil, loadError == nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button {
+                            showEdit = true
+                        } label: {
+                            Label("編輯", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            Label("刪除", systemImage: "trash")
+                        }
                     } label: {
-                        Label("編輯", systemImage: "pencil")
+                        Image(systemName: "ellipsis.circle")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(TacticalGlassTheme.primary)
                     }
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        Label("刪除", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(TacticalGlassTheme.primary)
                 }
             }
+        }
+        .refreshable {
+            await load()
         }
         .task {
             await load()
@@ -961,7 +1020,12 @@ struct SelfInspectionRecordDetailView: View {
     }
 
     @ViewBuilder
-    private func detailScroll(record: SelfInspectionRecordDetailDTO, hub: SelfInspectionTemplateHubDTO) -> some View {
+    private func detailScroll(
+        record: SelfInspectionRecordDetailDTO,
+        hub: SelfInspectionTemplateHubDTO,
+        pendingLocalImages: [UIImage],
+        showPendingPhotoSection: Bool
+    ) -> some View {
         let header = hub.template.headerConfig
         let h = record.filledPayload?.header
         let ids = expectedItemIds
@@ -1080,10 +1144,21 @@ struct SelfInspectionRecordDetailView: View {
                     }
                 }
 
+                if showPendingPhotoSection, !pendingLocalImages.isEmpty {
+                    TacticalGlassCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("待上傳照片")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            TacticalPhotoAlbumGrid(images: pendingLocalImages, columnCount: 3, spacing: 10)
+                        }
+                    }
+                }
+
                 if let photoIds = record.filledPayload?.photoAttachmentIds, !photoIds.isEmpty {
                     TacticalGlassCard {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("照片")
+                            Text(showPendingPhotoSection ? "已上傳附件" : "照片")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(TacticalGlassTheme.mutedLabel)
                             TacticalPhotoAlbumGrid(
@@ -1181,8 +1256,16 @@ struct SelfInspectionRecordDetailView: View {
     private func load() async {
         isLoading = true
         loadError = nil
+        loadFailureIsConnectivity = false
         actionError = nil
+        pendingLocalPreviewImages = []
         defer { isLoading = false }
+
+        if let oid = pendingOutboxEntryId {
+            await loadPendingOutbox(entryId: oid)
+            return
+        }
+
         do {
             let detail = try await APIService.getSelfInspectionRecord(
                 baseURL: AppConfiguration.apiRootURL,
@@ -1203,10 +1286,57 @@ struct SelfInspectionRecordDetailView: View {
                 )
             }
         } catch let api as APIRequestError {
+            loadFailureIsConnectivity = api.isLikelyConnectivityFailure
             loadError = api.localizedDescription
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
+            loadFailureIsConnectivity = error.isLikelyConnectivityFailure
             loadError = error.localizedDescription
+        }
+    }
+
+    private func loadPendingOutbox(entryId: UUID) async {
+        guard fieldOutbox.selfInspectionCreateIndexRecord(entryId: entryId) != nil else {
+            loadError = "找不到離線查驗草稿。"
+            loadFailureIsConnectivity = false
+            record = nil
+            hub = nil
+            return
+        }
+        do {
+            let payload = try fieldOutbox.loadSelfInspectionCreatePayload(entryId: entryId)
+            guard let entry = fieldOutbox.selfInspectionCreateIndexRecord(entryId: entryId) else {
+                loadError = "找不到離線查驗草稿。"
+                loadFailureIsConnectivity = false
+                record = nil
+                hub = nil
+                return
+            }
+            record = SelfInspectionPendingDetailFactory.makeDetail(entry: entry, payload: payload)
+            if let snap = FieldSelfInspectionTemplateRecordsSnapshotStore.load(projectId: projectId, templateId: templateId) {
+                hub = snap.hub
+                loadError = nil
+                loadFailureIsConnectivity = false
+            } else {
+                record = nil
+                hub = nil
+                loadError = "無法載入樣板結構。請於連線時開啟自主查驗樣板列表（將自動下載各樣板表單），或進入該樣板紀錄頁一次。"
+                loadFailureIsConnectivity = true
+                return
+            }
+            var imgs: [UIImage] = []
+            for f in payload.newPhotos {
+                if let data = try? fieldOutbox.readEntryMedia(entryId: entryId, storedName: f.storedName),
+                   let img = UIImage(data: data) {
+                    imgs.append(img)
+                }
+            }
+            pendingLocalPreviewImages = imgs
+        } catch {
+            loadError = error.localizedDescription
+            loadFailureIsConnectivity = false
+            record = nil
+            hub = nil
         }
     }
 

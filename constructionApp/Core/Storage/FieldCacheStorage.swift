@@ -62,25 +62,34 @@ enum FieldCacheStorage {
     struct UsageBreakdown: Sendable {
         var networkBytes: Int64
         var imageBytes: Int64
+        /// 離線圖說預載（獨立 40MB 槽，見 `FieldOfflineDrawingQuota`）。
+        var offlineDrawingBytes: Int64
 
-        var totalBytes: Int64 { networkBytes + imageBytes }
+        /// 納入本頁「一般暫存」120MB 配額的用量（網路＋圖片快取）。
+        var managedCacheBytes: Int64 { networkBytes + imageBytes }
+
+        /// 全部可從設定頁看到的磁碟暫存加總（含離線圖說）。
+        var totalBytes: Int64 { managedCacheBytes + offlineDrawingBytes }
     }
 
     static func usageBreakdown() -> UsageBreakdown {
         let network = Int64(URLCache.shared.currentDiskUsage)
         let image = directoryByteCount(at: imageCacheDirectoryURL)
-        return UsageBreakdown(networkBytes: network, imageBytes: image)
+        let offline = FieldOfflineDrawingStore.totalBytes()
+        return UsageBreakdown(networkBytes: network, imageBytes: image, offlineDrawingBytes: offline)
     }
 
-    /// App 回到前景等時機呼叫；超過預算則修剪。
+    /// App 回到前景等時機呼叫；超過預算則修剪（**不**修剪離線圖說預載）。
     static func trimIfNeeded() {
-        let total = usageBreakdown().totalBytes
-        guard total > displayBudgetBytes else { return }
+        let b = usageBreakdown()
+        let managed = b.managedCacheBytes
+        guard managed > displayBudgetBytes else { return }
 
         URLCache.shared.removeAllCachedResponses()
 
         let imageTotal = directoryByteCount(at: imageCacheDirectoryURL)
-        if imageTotal + Int64(URLCache.shared.currentDiskUsage) > trimTargetBytes {
+        let net = Int64(URLCache.shared.currentDiskUsage)
+        if imageTotal + net > trimTargetBytes {
             trimImageCacheLRUUntilUnderBudget()
         }
         NotificationCenter.default.post(name: .fieldCacheStorageDidChange, object: nil)
@@ -88,7 +97,7 @@ enum FieldCacheStorage {
 
     /// 在已清空或縮小 URLCache 後，依檔案修改時間由舊到新刪除，直到總用量低於目標。
     private static func trimImageCacheLRUUntilUnderBudget() {
-        while usageBreakdown().totalBytes > trimTargetBytes {
+        while usageBreakdown().managedCacheBytes > trimTargetBytes {
             guard let oldest = oldestImageFileURL() else { break }
             try? fileManager.removeItem(at: oldest)
         }
@@ -119,6 +128,10 @@ enum FieldCacheStorage {
     static func clearAllCaches() {
         URLCache.shared.removeAllCachedResponses()
         removeContentsOfDirectory(at: imageCacheDirectoryURL)
+        FieldRepairListSnapshotStore.removeAllFiles()
+        FieldDefectListSnapshotStore.removeAllFiles()
+        FieldSelfInspectionTemplatesSnapshotStore.removeAllFiles()
+        FieldSelfInspectionTemplateRecordsSnapshotStore.removeAllFiles()
         NotificationCenter.default.post(name: .fieldCacheStorageDidChange, object: nil)
     }
 

@@ -316,6 +316,17 @@ private struct PhotoPreviewSession: Identifiable {
     let startIndex: Int
 }
 
+/// iOS 26+ 起 `UIScreen.main` 已淘汰，改由前景 `UIWindowScene` 取寬度。
+@MainActor
+private func tacticalFallbackScreenWidth() -> CGFloat {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let scene = scenes.first { $0.activationState == .foregroundActive }
+        ?? scenes.first { $0.activationState == .foregroundInactive }
+        ?? scenes.first
+    let w = scene?.screen.bounds.width ?? 0
+    return w > 1 ? w : 390
+}
+
 /// 相簿式方格（固定正方形、`scaledToFill` 裁切），點擊以全螢幕左右滑檢視。遠端／本機共用此元件。
 struct TacticalPhotoAlbumGrid: View {
     let source: TacticalPhotoAlbumSource
@@ -331,7 +342,7 @@ struct TacticalPhotoAlbumGrid: View {
 
     private var layoutWidth: CGFloat {
         if measuredContainerWidth > 1 { return measuredContainerWidth }
-        return max(120, UIScreen.main.bounds.width - 64)
+        return max(120, tacticalFallbackScreenWidth() - 64)
     }
 
     init(source: TacticalPhotoAlbumSource, columnCount: Int = 3, spacing: CGFloat = 10, cornerRadius: CGFloat = TacticalGlassTheme.cornerRadius) {

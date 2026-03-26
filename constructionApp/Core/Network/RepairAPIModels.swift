@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct PageMetaDTO: Decodable, Sendable {
+struct PageMetaDTO: Codable, Sendable {
     let page: Int
     let limit: Int
     let total: Int
@@ -18,7 +18,7 @@ struct RepairListEnvelope: Decodable, Sendable {
     let meta: PageMetaDTO
 }
 
-struct RepairListItemDTO: Decodable, Identifiable, Sendable {
+struct RepairListItemDTO: Codable, Identifiable, Sendable {
     let id: String
     let projectId: String
     let customerName: String

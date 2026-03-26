@@ -7,47 +7,126 @@ import SwiftUI
 
 struct FieldCacheStorageDetailView: View {
     @State private var breakdown = FieldCacheStorage.usageBreakdown()
-    @State private var showClearConfirm = false
-    @State private var isClearing = false
+    @State private var showClearManagedConfirm = false
+    @State private var showClearOfflineConfirm = false
+    @State private var isClearingManaged = false
+    @State private var isClearingOffline = false
 
-    private var budget: Int64 { FieldCacheStorage.displayBudgetBytes }
+    private var managedBudget: Int64 { FieldCacheStorage.displayBudgetBytes }
+    private var offlineBudget: Int64 { FieldOfflineDrawingStore.vaultBudgetBytes() }
 
-    private var usageRatio: CGFloat {
-        guard budget > 0 else { return 0 }
-        return min(1, CGFloat(Double(breakdown.totalBytes) / Double(budget)))
+    private var managedUsageRatio: CGFloat {
+        guard managedBudget > 0 else { return 0 }
+        return min(1, CGFloat(Double(breakdown.managedCacheBytes) / Double(managedBudget)))
+    }
+
+    private var offlineUsageRatio: CGFloat {
+        guard offlineBudget > 0 else { return 0 }
+        return min(1, CGFloat(Double(breakdown.offlineDrawingBytes) / Double(offlineBudget)))
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                TacticalGlassCard {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("用量")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                            .tracking(0.8)
+                VStack(alignment: .leading, spacing: 12) {
+                    TacticalGlassCard {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("一般暫存（列表圖、網路）")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .tracking(0.8)
 
-                        Text(
-                            "\(FieldByteCountFormatter.megabytesString(breakdown.totalBytes))"
-                                + " / \(FieldByteCountFormatter.megabytesString(budget))"
-                        )
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.white)
+                            Text(
+                                "\(FieldByteCountFormatter.megabytesString(breakdown.managedCacheBytes))"
+                                    + " / \(FieldByteCountFormatter.megabytesString(managedBudget))"
+                            )
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
 
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                    .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.5))
-                                    .frame(height: 8)
-                                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                    .fill(TacticalGlassTheme.primaryGradient())
-                                    .frame(width: max(0, geo.size.width * usageRatio), height: 8)
-                            }
+                            usageBar(ratio: managedUsageRatio)
+
+                            managedBreakdownRows
                         }
-                        .frame(height: 8)
-
-                        breakdownRows
                     }
+
+                    Button {
+                        showClearManagedConfirm = true
+                    } label: {
+                        if isClearingManaged {
+                            ProgressView()
+                                .tint(TacticalGlassTheme.primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                        } else {
+                            Text("清除一般暫存")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .background {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .fill(TacticalGlassTheme.surfaceContainer)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+                    .disabled(isClearingManaged)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    TacticalGlassCard {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("離線圖說預載")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .tracking(0.8)
+
+                            Text(
+                                "\(FieldByteCountFormatter.megabytesString(breakdown.offlineDrawingBytes))"
+                                    + " / \(FieldByteCountFormatter.megabytesString(offlineBudget))"
+                            )
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
+
+                            usageBar(ratio: offlineUsageRatio)
+
+                            Text("與上方一般暫存分開計算，不會被自動清理；供離線預覽圖說時使用，可於此清除。")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Button {
+                        showClearOfflineConfirm = true
+                    } label: {
+                        if isClearingOffline {
+                            ProgressView()
+                                .tint(TacticalGlassTheme.primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                        } else {
+                            Text("清除離線圖說預載")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .background {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .fill(TacticalGlassTheme.surfaceContainer)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    }
+                    .disabled(isClearingOffline)
                 }
 
                 TacticalGlassCard {
@@ -57,7 +136,7 @@ struct FieldCacheStorageDetailView: View {
                             .foregroundStyle(TacticalGlassTheme.mutedLabel)
                             .tracking(0.8)
 
-                        Text("暫存包含下載圖片與網路回應快取，可隨時清除；清除後列表與預覽圖會重新下載。")
+                        Text("一般暫存為自動快取，可隨時清除；清除後列表與預覽圖會重新下載。")
                             .font(.subheadline)
                             .foregroundStyle(.white.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
@@ -68,40 +147,13 @@ struct FieldCacheStorageDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-
-                Button {
-                    showClearConfirm = true
-                } label: {
-                    if isClearing {
-                        ProgressView()
-                            .tint(TacticalGlassTheme.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                    } else {
-                        Text("清除暫存")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                    }
-                }
-                .buttonStyle(.plain)
-                .background {
-                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                        .fill(TacticalGlassTheme.surfaceContainer)
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                }
-                .disabled(isClearing)
             }
             .padding(20)
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.immediately)
         .background(TacticalGlassTheme.surface)
-        .navigationTitle("暫存空間")
+        .navigationTitle("儲存空間")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -111,17 +163,39 @@ struct FieldCacheStorageDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .fieldCacheStorageDidChange)) { _ in
             reloadBreakdown()
         }
-        .alert("要清除暫存嗎？", isPresented: $showClearConfirm) {
+        .alert("要清除一般暫存嗎？", isPresented: $showClearManagedConfirm) {
             Button("取消", role: .cancel) {}
             Button("清除", role: .destructive) {
-                Task { await performClear() }
+                Task { await performClearManaged() }
             }
         } message: {
-            Text("將刪除可重建的快取，不影響尚未上傳的資料。清除後圖片會在檢視時重新下載。")
+            Text("將刪除網路與圖片快取，不包含離線圖說預載。不影響尚未上傳的資料。")
+        }
+        .alert("要清除離線圖說預載嗎？", isPresented: $showClearOfflineConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("清除", role: .destructive) {
+                Task { await performClearOffline() }
+            }
+        } message: {
+            Text("將刪除所有專案已預載的圖說檔案。不影響一般暫存與尚未上傳的資料。")
         }
     }
 
-    private var breakdownRows: some View {
+    private func usageBar(ratio: CGFloat) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                    .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.5))
+                    .frame(height: 8)
+                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                    .fill(TacticalGlassTheme.primaryGradient())
+                    .frame(width: max(0, geo.size.width * ratio), height: 8)
+            }
+        }
+        .frame(height: 8)
+    }
+
+    private var managedBreakdownRows: some View {
         VStack(alignment: .leading, spacing: 12) {
             usageLine(
                 title: "網路快取",
@@ -153,10 +227,18 @@ struct FieldCacheStorageDetailView: View {
     }
 
     @MainActor
-    private func performClear() async {
-        isClearing = true
-        defer { isClearing = false }
+    private func performClearManaged() async {
+        isClearingManaged = true
+        defer { isClearingManaged = false }
         FieldCacheStorage.clearAllCaches()
+        reloadBreakdown()
+    }
+
+    @MainActor
+    private func performClearOffline() async {
+        isClearingOffline = true
+        defer { isClearingOffline = false }
+        FieldOfflineDrawingStore.removeAll()
         reloadBreakdown()
     }
 }
@@ -166,7 +248,8 @@ struct FieldCacheStorageDetailView: View {
 struct FieldCacheStorageSettingsRow: View {
     @State private var breakdown = FieldCacheStorage.usageBreakdown()
 
-    private var budget: Int64 { FieldCacheStorage.displayBudgetBytes }
+    private var managedBudget: Int64 { FieldCacheStorage.displayBudgetBytes }
+    private var offlineBudget: Int64 { FieldOfflineDrawingStore.vaultBudgetBytes() }
 
     var body: some View {
         NavigationLink {
@@ -174,16 +257,22 @@ struct FieldCacheStorageSettingsRow: View {
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("暫存空間")
+                    Text("儲存空間")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                     Text(
-                        "\(FieldByteCountFormatter.megabytesString(breakdown.totalBytes))"
-                            + " / \(FieldByteCountFormatter.megabytesString(budget))"
+                        "一般暫存 \(FieldByteCountFormatter.megabytesString(breakdown.managedCacheBytes))"
+                            + " / \(FieldByteCountFormatter.megabytesString(managedBudget))"
                     )
                     .font(.caption)
                     .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                    Text("圖片與網路快取 · 點進管理")
+                    Text(
+                        "離線圖說 \(FieldByteCountFormatter.megabytesString(breakdown.offlineDrawingBytes))"
+                            + " / \(FieldByteCountFormatter.megabytesString(offlineBudget))"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    Text("與圖說預載分開計算 · 點進管理")
                         .font(.caption2)
                         .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.9))
                 }

@@ -49,6 +49,7 @@ struct AccountToolbarAvatar: View {
 struct FieldSettingsView: View {
     @Environment(SessionManager.self) private var session
     @Environment(\.dismiss) private var dismiss
+    @State private var storageBreakdown = FieldCacheStorage.usageBreakdown()
 
     var body: some View {
         ScrollView {
@@ -70,6 +71,10 @@ struct FieldSettingsView: View {
                                     Text(user.email)
                                         .font(.subheadline)
                                         .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                    Text(profileStorageSummary)
+                                        .font(.caption2)
+                                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.95))
+                                        .padding(.top, 2)
                                 }
                                 Spacer(minLength: 0)
                             }
@@ -153,6 +158,20 @@ struct FieldSettingsView: View {
                 .foregroundStyle(TacticalGlassTheme.primary)
             }
         }
+        .onAppear {
+            storageBreakdown = FieldCacheStorage.usageBreakdown()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldCacheStorageDidChange)) { _ in
+            storageBreakdown = FieldCacheStorage.usageBreakdown()
+        }
+    }
+
+    private var profileStorageSummary: String {
+        let m = FieldByteCountFormatter.megabytesString(storageBreakdown.managedCacheBytes)
+        let mb = FieldByteCountFormatter.megabytesString(FieldCacheStorage.displayBudgetBytes)
+        let o = FieldByteCountFormatter.megabytesString(storageBreakdown.offlineDrawingBytes)
+        let ob = FieldByteCountFormatter.megabytesString(FieldOfflineDrawingStore.vaultBudgetBytes())
+        return "本機：一般暫存 \(m)／\(mb) · 離線圖說 \(o)／\(ob)"
     }
 
     private func labeledRow(title: String, value: String, mono: Bool = false) -> some View {

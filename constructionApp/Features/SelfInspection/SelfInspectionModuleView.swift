@@ -31,11 +31,26 @@ final class SelfInspectionTemplatesListViewModel {
                     projectId: projectId
                 )
             }
-        } catch let api as APIRequestError {
-            errorMessage = api.localizedDescription
+            FieldSelfInspectionTemplatesSnapshotStore.save(projectId: projectId, templates: templates)
+            let templateIds = templates.map(\.id)
+            Task { @MainActor in
+                await SelfInspectionTemplateHubPrefetch.prefetchAllHubs(
+                    projectId: projectId,
+                    templateIds: templateIds,
+                    session: session
+                )
+            }
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
-            errorMessage = error.localizedDescription
+            if error.isLikelyConnectivityFailure,
+               let snap = FieldSelfInspectionTemplatesSnapshotStore.load(projectId: projectId) {
+                templates = snap
+                errorMessage = nil
+            } else if let api = error as? APIRequestError {
+                errorMessage = api.localizedDescription
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -48,6 +63,8 @@ final class SelfInspectionRecordsListViewModel {
     var isLoading = false
     var isLoadingMore = false
     var errorMessage: String?
+    /// 最近一次列表載入是否因連線問題失敗（供離線還原快照）。
+    private(set) var lastLoadFailedOffline = false
 
     var hasMore: Bool {
         guard let meta else { return false }
@@ -57,6 +74,7 @@ final class SelfInspectionRecordsListViewModel {
     func load(projectId: String, templateId: String, session: SessionManager) async {
         isLoading = true
         errorMessage = nil
+        lastLoadFailedOffline = false
         defer { isLoading = false }
         do {
             let env = try await session.withValidAccessToken { token in
@@ -71,11 +89,14 @@ final class SelfInspectionRecordsListViewModel {
             }
             records = env.data
             meta = env.meta
-        } catch let api as APIRequestError {
-            errorMessage = api.localizedDescription
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
-            errorMessage = error.localizedDescription
+            lastLoadFailedOffline = error.isLikelyConnectivityFailure
+            if let api = error as? APIRequestError {
+                errorMessage = api.localizedDescription
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -99,11 +120,16 @@ final class SelfInspectionRecordsListViewModel {
             let newRows = env.data.filter { !existing.contains($0.id) }
             records.append(contentsOf: newRows)
             meta = env.meta
-        } catch let api as APIRequestError {
-            errorMessage = api.localizedDescription
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
-            errorMessage = error.localizedDescription
+            if error.isLikelyConnectivityFailure, !records.isEmpty {
+                return
+            }
+            if let api = error as? APIRequestError {
+                errorMessage = api.localizedDescription
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
@@ -252,11 +278,52 @@ private func dateFromInspectionYMD(_ s: String) -> Date? {
     return Calendar.current.date(from: c)
 }
 
+// MARK: - 樣板 hub 預載（離線新增需各樣板欄位／檢查項）
+
+private enum SelfInspectionTemplateHubPrefetch {
+    /// 在樣板列表成功載入後於背景執行；逐一下載各樣板 hub 並合併至快照，不阻塞列表 UI。
+    @MainActor
+    static func prefetchAllHubs(
+        projectId: String,
+        templateIds: [String],
+        session: SessionManager
+    ) async {
+        guard FieldNetworkMonitor.shared.isReachable else { return }
+        for templateId in templateIds {
+            guard FieldNetworkMonitor.shared.isReachable else { break }
+            do {
+                let hub = try await session.withValidAccessToken { token in
+                    try await APIService.getSelfInspectionTemplateHub(
+                        baseURL: AppConfiguration.apiRootURL,
+                        token: token,
+                        projectId: projectId,
+                        templateId: templateId
+                    )
+                }
+                FieldSelfInspectionTemplateRecordsSnapshotStore.mergeHub(
+                    projectId: projectId,
+                    templateId: templateId,
+                    hub: hub
+                )
+            } catch {
+                guard !error.isIgnorableTaskCancellation else { return }
+                // 單一樣板失敗不中斷其餘預載
+                continue
+            }
+        }
+    }
+}
+
 // MARK: - Navigation
 
 private struct SelfInspectionTemplateRoute: Hashable {
     let templateId: String
     let templateName: String
+}
+
+private enum SelfInspectionRecordListDestination: Hashable {
+    case serverRecord(id: String)
+    case pendingOutbox(entryId: UUID)
 }
 
 // MARK: - Module root
@@ -451,9 +518,11 @@ struct SelfInspectionTemplateRecordsView: View {
     @State private var templateHub: SelfInspectionTemplateHubDTO?
     @State private var showCreate = false
     @State private var fabScrollIdle = true
-    @State private var navigateToRecordId: String?
+    @State private var navigateToRecord: SelfInspectionRecordListDestination?
     @State private var editSheetTarget: SelfInspectionEditSheetTarget?
     @State private var recordIdPendingDelete: String?
+    /// 與報修／缺失列表相同：Outbox 經 Environment 時需靠通知強制刷新待上傳列。
+    @State private var outboxRefreshEpoch: UInt = 0
 
     private var expectedItemIds: Set<String> {
         guard let hub = templateHub else { return [] }
@@ -469,7 +538,8 @@ struct SelfInspectionTemplateRecordsView: View {
     }
 
     private var pendingSelfInspectionRecords: [FieldOutboxIndexRecord] {
-        outbox.records(forProjectId: projectId).filter {
+        _ = outboxRefreshEpoch
+        return outbox.records(forProjectId: projectId).filter {
             $0.kind == .selfInspectionRecordCreate && $0.templateId == templateId
         }
     }
@@ -535,14 +605,19 @@ struct SelfInspectionTemplateRecordsView: View {
                 } else {
                     List {
                         ForEach(pendingSelfInspectionRecords) { rec in
-                            selfInspectionPendingOutboxRow(rec)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
+                            Button {
+                                navigateToRecord = .pendingOutbox(entryId: rec.id)
+                            } label: {
+                                selfInspectionPendingOutboxRow(rec)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                         }
                         ForEach(model.records) { rec in
                             Button {
-                                navigateToRecordId = rec.id
+                                navigateToRecord = .serverRecord(id: rec.id)
                             } label: {
                                 selfInspectionRecordRow(
                                     rec,
@@ -622,15 +697,30 @@ struct SelfInspectionTemplateRecordsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationDestination(item: $navigateToRecordId) { recordId in
-            SelfInspectionRecordDetailView(
-                projectId: projectId,
-                templateId: templateId,
-                recordId: recordId,
-                accessToken: session.accessToken ?? "",
-                projectDisplayName: session.selectedProjectName ?? ""
-            ) {
-                await reloadHubAndRecords()
+        .navigationDestination(item: $navigateToRecord) { dest in
+            switch dest {
+            case .serverRecord(let recordId):
+                SelfInspectionRecordDetailView(
+                    projectId: projectId,
+                    templateId: templateId,
+                    recordId: recordId,
+                    pendingOutboxEntryId: nil,
+                    accessToken: session.accessToken ?? "",
+                    projectDisplayName: session.selectedProjectName ?? ""
+                ) {
+                    await reloadHubAndRecords()
+                }
+            case .pendingOutbox(let entryId):
+                SelfInspectionRecordDetailView(
+                    projectId: projectId,
+                    templateId: templateId,
+                    recordId: entryId.uuidString,
+                    pendingOutboxEntryId: entryId,
+                    accessToken: session.accessToken ?? "",
+                    projectDisplayName: session.selectedProjectName ?? ""
+                ) {
+                    await reloadHubAndRecords()
+                }
             }
         }
         .task {
@@ -640,6 +730,9 @@ struct SelfInspectionTemplateRecordsView: View {
             Task {
                 await reloadHubAndRecords()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldOutboxDidChange)) { _ in
+            outboxRefreshEpoch += 1
         }
         .sheet(isPresented: $showCreate) {
             NavigationStack {
@@ -690,8 +783,10 @@ struct SelfInspectionTemplateRecordsView: View {
     }
 
     private func reloadHubAndRecords() async {
+        let snap = FieldSelfInspectionTemplateRecordsSnapshotStore.load(projectId: projectId, templateId: templateId)
+        var hubFromAPI: SelfInspectionTemplateHubDTO?
         do {
-            let h = try await session.withValidAccessToken { token in
+            hubFromAPI = try await session.withValidAccessToken { token in
                 try await APIService.getSelfInspectionTemplateHub(
                     baseURL: AppConfiguration.apiRootURL,
                     token: token,
@@ -699,11 +794,35 @@ struct SelfInspectionTemplateRecordsView: View {
                     templateId: templateId
                 )
             }
-            templateHub = h
+            templateHub = hubFromAPI
         } catch {
-            templateHub = nil
+            if error.isLikelyConnectivityFailure, let h = snap?.hub {
+                templateHub = h
+            } else {
+                templateHub = nil
+            }
         }
+
         await model.load(projectId: projectId, templateId: templateId, session: session)
+
+        if model.errorMessage != nil, model.lastLoadFailedOffline, let s = snap {
+            model.records = s.records
+            model.meta = s.meta
+            model.errorMessage = nil
+            if templateHub == nil {
+                templateHub = s.hub
+            }
+        }
+
+        if templateHub != nil, model.errorMessage == nil, let h = templateHub {
+            FieldSelfInspectionTemplateRecordsSnapshotStore.save(
+                projectId: projectId,
+                templateId: templateId,
+                hub: h,
+                records: model.records,
+                meta: model.meta
+            )
+        }
     }
 
     private func deleteRecord(recordId: String) async {

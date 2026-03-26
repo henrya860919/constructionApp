@@ -84,6 +84,8 @@ final class DefectListViewModel {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
+        let statusKey = statusFilter.queryValue ?? "all"
+        let searchSeg = String(trimmedSearchQuery.prefix(200))
         do {
             let q = trimmedSearchQuery.isEmpty ? nil : String(trimmedSearchQuery.prefix(200))
             let status = statusFilter.queryValue
@@ -100,11 +102,29 @@ final class DefectListViewModel {
             }
             items = env.data
             meta = env.meta
-        } catch let api as APIRequestError {
-            errorMessage = api.localizedDescription
+            FieldDefectListSnapshotStore.save(
+                projectId: projectId,
+                statusFilterKey: statusKey,
+                searchQuery: searchSeg,
+                items: items,
+                meta: meta
+            )
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
-            errorMessage = error.localizedDescription
+            if error.isLikelyConnectivityFailure,
+               let snap = FieldDefectListSnapshotStore.load(
+                   projectId: projectId,
+                   statusFilterKey: statusKey,
+                   searchQuery: searchSeg
+               ) {
+                items = snap.items
+                meta = snap.meta
+                errorMessage = nil
+            } else if let api = error as? APIRequestError {
+                errorMessage = api.localizedDescription
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -131,11 +151,16 @@ final class DefectListViewModel {
             let newRows = env.data.filter { !existing.contains($0.id) }
             items.append(contentsOf: newRows)
             meta = env.meta
-        } catch let api as APIRequestError {
-            errorMessage = api.localizedDescription
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
-            errorMessage = error.localizedDescription
+            if error.isLikelyConnectivityFailure, !items.isEmpty {
+                return
+            }
+            if let api = error as? APIRequestError {
+                errorMessage = api.localizedDescription
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -221,9 +246,12 @@ struct DefectListView: View {
     @State private var navigateToDefectId: String?
     @State private var defectEditSheetTarget: DefectEditSheetTarget?
     @State private var pendingRecordSheetParent: PendingDefectParentTarget?
+    /// 見 `RepairRequestsListView`：確保離線入佇列後列表會更新。
+    @State private var outboxRefreshEpoch: UInt = 0
 
     private var pendingDefects: [FieldOutboxIndexRecord] {
-        outbox.records(forProjectId: projectId).filter { $0.kind == .defectCreate }
+        _ = outboxRefreshEpoch
+        return outbox.records(forProjectId: projectId).filter { $0.kind == .defectCreate }
     }
 
     private var showEmptyPlaceholder: Bool {
@@ -275,6 +303,9 @@ struct DefectListView: View {
             Task {
                 await model.load(projectId: projectId, session: session)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldOutboxDidChange)) { _ in
+            outboxRefreshEpoch += 1
         }
         .onChange(of: searchFieldText) { _, newValue in
             guard listChrome == .searchSession else { return }
@@ -401,7 +432,14 @@ struct DefectListView: View {
 
     @ViewBuilder
     private var resultsBlock: some View {
-        if let err = model.errorMessage {
+        if model.isLoading && showEmptyPlaceholder {
+            Spacer()
+            ProgressView("載入中…")
+                .tint(TacticalGlassTheme.primary)
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .frame(maxWidth: .infinity)
+            Spacer()
+        } else if let err = model.errorMessage, showEmptyPlaceholder {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -431,13 +469,6 @@ struct DefectListView: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
-        } else if model.isLoading && showEmptyPlaceholder {
-            Spacer()
-            ProgressView("載入中…")
-                .tint(TacticalGlassTheme.primary)
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                .frame(maxWidth: .infinity)
-            Spacer()
         } else if showEmptyPlaceholder {
             Spacer()
             VStack(spacing: 8) {
@@ -750,10 +781,12 @@ final class DefectDetailViewModel {
     var records: [DefectExecutionRecordDTO] = []
     var isLoading = false
     var errorMessage: String?
+    var loadFailureIsConnectivity = false
 
     func load(projectId: String, defectId: String, token: String) async {
         isLoading = true
         errorMessage = nil
+        loadFailureIsConnectivity = false
         defer { isLoading = false }
         do {
             async let d = APIService.getDefectImprovement(
@@ -771,9 +804,11 @@ final class DefectDetailViewModel {
             defect = try await d
             records = try await r
         } catch let api as APIRequestError {
+            loadFailureIsConnectivity = api.isLikelyConnectivityFailure
             errorMessage = api.localizedDescription
         } catch {
             guard !error.isIgnorableTaskCancellation else { return }
+            loadFailureIsConnectivity = error.isLikelyConnectivityFailure
             errorMessage = error.localizedDescription
         }
     }
@@ -806,15 +841,6 @@ struct DefectDetailView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
-                if let err = model.errorMessage {
-                    Text(err)
-                        .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                }
-
                 if model.isLoading && model.defect == nil {
                     Spacer(minLength: 0)
                     ProgressView("載入中…")
@@ -822,6 +848,11 @@ struct DefectDetailView: View {
                         .foregroundStyle(TacticalGlassTheme.mutedLabel)
                         .frame(maxWidth: .infinity)
                     Spacer(minLength: 0)
+                } else if let err = model.errorMessage, model.defect == nil {
+                    FieldCenteredRecordLoadErrorView(
+                        isConnectivityOrOffline: model.loadFailureIsConnectivity,
+                        localizedErrorDetail: model.loadFailureIsConnectivity ? nil : err
+                    )
                 } else if let d = model.defect {
                     VStack(alignment: .leading, spacing: 12) {
                         summaryHeader(d)
@@ -891,6 +922,9 @@ struct DefectDetailView: View {
                         .foregroundStyle(TacticalGlassTheme.primary)
                 }
             }
+        }
+        .refreshable {
+            await model.load(projectId: projectId, defectId: defectId, token: accessToken)
         }
         .task {
             await model.load(projectId: projectId, defectId: defectId, token: accessToken)

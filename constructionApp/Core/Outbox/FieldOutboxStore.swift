@@ -7,6 +7,10 @@ import Foundation
 import Observation
 import UserNotifications
 
+enum FieldOutboxReadError: Error {
+    case entryNotFound
+}
+
 // MARK: - Index
 
 enum FieldOutboxKind: String, Codable, Sendable {
@@ -311,6 +315,26 @@ final class FieldOutboxStore {
     }
 
     // MARK: - Remove
+
+    // MARK: - Read（離線檢視待上傳自主查驗）
+
+    func selfInspectionCreateIndexRecord(entryId: UUID) -> FieldOutboxIndexRecord? {
+        records.first { $0.id == entryId && $0.kind == .selfInspectionRecordCreate }
+    }
+
+    func loadSelfInspectionCreatePayload(entryId: UUID) throws -> FieldOutboxSelfInspectionPayload {
+        guard let rec = selfInspectionCreateIndexRecord(entryId: entryId) else {
+            throw FieldOutboxReadError.entryNotFound
+        }
+        return try loadPayload(FieldOutboxSelfInspectionPayload.self, rec: rec)
+    }
+
+    func readEntryMedia(entryId: UUID, storedName: String) throws -> Data {
+        guard let rec = records.first(where: { $0.id == entryId }) else {
+            throw FieldOutboxReadError.entryNotFound
+        }
+        return try readMedia(rec, storedName: storedName)
+    }
 
     func removeEntry(id: UUID) throws {
         records.removeAll { $0.id == id }

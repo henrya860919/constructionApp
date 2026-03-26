@@ -11,24 +11,24 @@ struct FieldOfflineBanner: View {
     var body: some View {
         Group {
             if !network.isReachable {
-                HStack(spacing: 10) {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "wifi.slash")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(TacticalGlassTheme.primary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("離線模式")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                        Text("新增內容將排入待上傳，連線後自動同步。")
-                            .font(.caption2)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
+                    Text("離線模式 · 新增將排入待上傳，連線後自動同步")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                .padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    TacticalGlassTheme.surfaceContainer.opacity(0.96)
+                        .shadow(color: .black.opacity(0.22), radius: 5, y: 2)
+                }
             }
         }
     }

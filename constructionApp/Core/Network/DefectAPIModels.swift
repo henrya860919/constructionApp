@@ -12,7 +12,7 @@ struct DefectListEnvelope: Decodable, Sendable {
     let meta: PageMetaDTO
 }
 
-struct DefectListItemDTO: Decodable, Identifiable, Sendable {
+struct DefectListItemDTO: Codable, Identifiable, Sendable {
     let id: String
     let projectId: String
     let description: String

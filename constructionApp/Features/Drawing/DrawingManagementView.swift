@@ -118,8 +118,10 @@ private extension View {
 
 struct DrawingManagementRootView: View {
     @Environment(SessionManager.self) private var session
+    @Environment(FieldNetworkMonitor.self) private var network
     @State private var vm = DrawingTreeViewModel()
     @State private var searchSessionPresented = false
+    @State private var offlinePreviewListPresented = false
 
     var body: some View {
         Group {
@@ -159,7 +161,22 @@ struct DrawingManagementRootView: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 20)
-            .padding(.bottom, 12)
+            .padding(.bottom, 10)
+
+            if !network.isReachable {
+                Button {
+                    offlinePreviewListPresented = true
+                } label: {
+                    obsidianDrawingAuxiliaryRow(
+                        systemImage: "doc.text.magnifyingglass",
+                        title: "離線圖說預覽",
+                        subtitle: "僅列出本專案已預先下載、可離線開啟的檔案"
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+            }
 
             if let err = vm.errorMessage {
                 Text(err)
@@ -180,6 +197,9 @@ struct DrawingManagementRootView: View {
         .navigationDestination(isPresented: $searchSessionPresented) {
             DrawingManagementSearchSessionView(projectId: projectId, vm: vm)
         }
+        .navigationDestination(isPresented: $offlinePreviewListPresented) {
+            DrawingOfflinePreviewListView(projectId: projectId, vm: vm)
+        }
         .task(id: projectId) {
             await vm.load(projectId: projectId, session: session)
         }
@@ -188,6 +208,136 @@ struct DrawingManagementRootView: View {
                 await vm.load(projectId: projectId, session: session)
             }
         }
+    }
+
+    @ViewBuilder
+    private func obsidianDrawingAuxiliaryRow(systemImage: String, title: String, subtitle: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(TacticalGlassTheme.primary)
+                .frame(width: 28, alignment: .center)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background {
+            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                .fill(TacticalGlassTheme.surfaceContainer)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+        }
+    }
+}
+
+// MARK: - 離線：已預載檔案列表（Quick Look）
+
+private struct DrawingOfflinePreviewListView: View {
+    let projectId: String
+    @Bindable var vm: DrawingTreeViewModel
+    @State private var quickLookSession: DrawingQuickLookSession?
+    @State private var storeRefreshTick: UInt = 0
+
+    private var sortedEntries: [OfflineDrawingIndexEntry] {
+        _ = storeRefreshTick
+        return FieldOfflineDrawingStore.entries(forProjectId: projectId).sorted { a, b in
+            let na = vm.node(byId: a.nodeId)?.name ?? a.fileName
+            let nb = vm.node(byId: b.nodeId)?.name ?? b.fileName
+            return na.localizedStandardCompare(nb) == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        Group {
+            if sortedEntries.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "tray")
+                        .font(.largeTitle)
+                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    Text("尚無已預載的圖說檔案")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text("本列表僅顯示已下載至離線圖說空間的檔案。釋出空間請至「設定」→「儲存空間」。")
+                        .font(.subheadline)
+                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(sortedEntries) { entry in
+                        Button {
+                            openPreview(entry)
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "doc.richtext")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(TacticalGlassTheme.primary.opacity(0.95))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(vm.node(byId: entry.nodeId)?.name ?? entry.fileName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .multilineTextAlignment(.leading)
+                                    Text(entry.fileName)
+                                        .font(.caption)
+                                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                        .lineLimit(2)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "eye.circle.fill")
+                                    .font(.body)
+                                    .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin, for: .scrollContent)
+            }
+        }
+        .background(TacticalGlassTheme.surface)
+        .navigationTitle("離線圖說預覽")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .fullScreenCover(item: $quickLookSession) { session in
+            FieldQuickLookPreviewSheet(fileURL: session.fileURL, title: session.title)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldCacheStorageDidChange)) { _ in
+            storeRefreshTick &+= 1
+        }
+    }
+
+    private func openPreview(_ entry: OfflineDrawingIndexEntry) {
+        guard
+            let url = FieldOfflineDrawingStore.temporaryURLForQuickLook(
+                projectId: projectId,
+                attachmentId: entry.attachmentId,
+                displayFileName: entry.fileName
+            )
+        else { return }
+        quickLookSession = DrawingQuickLookSession(fileURL: url, title: entry.fileName)
     }
 }
 
@@ -394,6 +544,8 @@ private struct DrawingLeafCardView: View {
     @State private var quickLookSession: DrawingQuickLookSession?
     @State private var previewError: String?
     @State private var isPreparingPreview = false
+    /// 讓「已預載」標籤在預載／清除後刷新。
+    @State private var offlineStoreRefreshTick = 0
 
     private var revisions: [DrawingRevisionDTO] {
         vm.revisionsByNodeId[node.id] ?? []
@@ -401,6 +553,12 @@ private struct DrawingLeafCardView: View {
 
     private var displayFileName: String {
         node.latestFile?.fileName ?? node.name
+    }
+
+    private var isLatestFilePreloaded: Bool {
+        _ = offlineStoreRefreshTick
+        guard let fid = node.latestFile?.id, !fid.isEmpty else { return false }
+        return FieldOfflineDrawingStore.hasFile(projectId: projectId, attachmentId: fid)
     }
 
     private var canOpenPreview: Bool {
@@ -433,6 +591,9 @@ private struct DrawingLeafCardView: View {
         } message: {
             Text(previewError ?? "")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .fieldCacheStorageDidChange)) { _ in
+            offlineStoreRefreshTick &+= 1
+        }
     }
 
     private var cardInterior: some View {
@@ -456,9 +617,22 @@ private struct DrawingLeafCardView: View {
                         ProgressView()
                             .tint(TacticalGlassTheme.primary)
                     } else {
-                        Image(systemName: "eye.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                        HStack(spacing: 8) {
+                            if isLatestFilePreloaded {
+                                Text("已預載")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(TacticalGlassTheme.primary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background {
+                                        Capsule()
+                                            .fill(TacticalGlassTheme.primary.opacity(0.18))
+                                    }
+                            }
+                            Image(systemName: "eye.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                        }
                     }
                 }
 
@@ -531,29 +705,51 @@ private struct DrawingLeafCardView: View {
     @MainActor
     private func openLatestPreview() async {
         previewError = nil
-        let attachmentId: String?
+        let primaryAttachmentId: String?
         let name: String
         if let r0 = revisions.first {
-            attachmentId = r0.id
+            primaryAttachmentId = r0.id
             name = r0.fileName
         } else if let f = node.latestFile {
-            attachmentId = f.id
+            primaryAttachmentId = f.id
             name = f.fileName
         } else {
-            attachmentId = nil
+            primaryAttachmentId = nil
             name = displayFileName
         }
-        guard let attachmentId else {
+        guard let primaryAttachmentId, !primaryAttachmentId.isEmpty else {
             previewError = "沒有可預覽的檔案"
             return
         }
+
+        var candidateIds: [String] = []
+        var seen = Set<String>()
+        func appendId(_ id: String?) {
+            guard let id, !id.isEmpty, !seen.contains(id) else { return }
+            seen.insert(id)
+            candidateIds.append(id)
+        }
+        appendId(revisions.first?.id)
+        appendId(node.latestFile?.id)
+
+        for aid in candidateIds {
+            if let tempURL = FieldOfflineDrawingStore.temporaryURLForQuickLook(
+                projectId: projectId,
+                attachmentId: aid,
+                displayFileName: name
+            ) {
+                quickLookSession = DrawingQuickLookSession(fileURL: tempURL, title: name)
+                return
+            }
+        }
+
         isPreparingPreview = true
         defer { isPreparingPreview = false }
         do {
             let fileURL = try await session.withValidAccessToken { token in
                 let fileURL = AppConfiguration.apiRootURL
                     .appendingPathComponent("files")
-                    .appendingPathComponent(attachmentId)
+                    .appendingPathComponent(primaryAttachmentId)
                 let data = try await APIService.fetchAuthorizedData(url: fileURL, token: token)
                 let safe = name.replacingOccurrences(of: "/", with: "_")
                 let dest = FileManager.default.temporaryDirectory
