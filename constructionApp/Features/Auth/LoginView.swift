@@ -122,38 +122,20 @@ struct LoginView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("FIELD COMMAND")
+            Text("Nexa")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(TacticalGlassTheme.primary)
                 .tracking(2)
 
-            Text("現場指揮")
+            Text("Nexa Construction App")
                 .tacticalDisplay(32, weight: .bold)
                 .foregroundStyle(.white)
-
-            Text("自主查驗 · 缺失改善 · 報修 · 施工日誌")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
 
             Text(AppDateDisplay.string(from: Date.now))
                 .font(.tacticalMono(.subheadline, weight: .medium))
                 .foregroundStyle(TacticalGlassTheme.mutedLabel)
                 .padding(.top, 4)
         }
-    }
-
-    private var apiHint: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("API")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .tracking(1)
-            Text(AppConfiguration.apiRootURL.absoluteString)
-                .font(.tacticalMonoFixed(size: 11, weight: .regular))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
-                .textSelection(.enabled)
-        }
-        .padding(.top, 8)
     }
 }
 

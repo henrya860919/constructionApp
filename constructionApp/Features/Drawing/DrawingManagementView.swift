@@ -145,12 +145,6 @@ struct DrawingManagementRootView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
 
-            Text("依資料夾瀏覽圖說；點圖說卡片以最新修訂預覽檔案（僅檢視，現場版不提供上傳）。")
-                .font(.subheadline)
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 10)
-
             Button {
                 searchSessionPresented = true
             } label: {
