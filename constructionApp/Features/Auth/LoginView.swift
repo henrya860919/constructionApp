@@ -110,7 +110,7 @@ struct LoginView: View {
                         }
                     }
 
-                    apiHint
+                    
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 48)
