@@ -189,6 +189,7 @@ final class RepairListViewModel {
 }
 
 struct RepairHomeView: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @State private var model = RepairListViewModel()
     @State private var fabScrollIdle = true
@@ -207,7 +208,7 @@ struct RepairHomeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
     }
 }
 
@@ -220,6 +221,7 @@ private struct PendingRepairParentTarget: Identifiable {
 }
 
 struct RepairRequestsListView: View {
+    @Environment(\.fieldTheme) private var theme
     enum ListChrome {
         case main
         case searchSession
@@ -359,7 +361,7 @@ struct RepairRequestsListView: View {
     private var mainChromeStack: some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(alignment: .leading, spacing: 0) {
-                obsidianModuleHeader(title: "報修紀錄")
+                ObsidianModuleHeaderView(title: "報修紀錄")
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 12)
@@ -431,7 +433,7 @@ struct RepairRequestsListView: View {
         if model.isLoading && showEmptyPlaceholder {
             Spacer()
             ProgressView("載入中…")
-                .tint(TacticalGlassTheme.primary)
+                .tint(theme.primary)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
             Spacer()
@@ -439,14 +441,14 @@ struct RepairRequestsListView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                     Text("無法載入列表")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.onSurface)
                 }
                 Text(err)
                     .font(.caption)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("重試") {
                     Task { await model.load(projectId: projectId, session: session) }
@@ -457,11 +459,11 @@ struct RepairRequestsListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                    .fill(theme.surfaceContainer.opacity(0.95))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(theme.tertiary.opacity(0.35), lineWidth: 1)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
@@ -470,7 +472,7 @@ struct RepairRequestsListView: View {
             VStack(spacing: 8) {
                 Image(systemName: "tray")
                     .font(.title2)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                 Text(model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "尚無報修資料" : "查無符合的紀錄")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -503,7 +505,7 @@ struct RepairRequestsListView: View {
                         } label: {
                             Label("編輯", systemImage: "pencil")
                         }
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(theme.primary)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
@@ -520,7 +522,7 @@ struct RepairRequestsListView: View {
                         HStack {
                             if model.isLoadingMore {
                                 ProgressView()
-                                    .tint(TacticalGlassTheme.primary)
+                                    .tint(theme.primary)
                             }
                             Text(model.isLoadingMore ? "載入中…" : "載入更多")
                                 .font(.subheadline.weight(.semibold))
@@ -529,7 +531,7 @@ struct RepairRequestsListView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                     .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -554,20 +556,20 @@ struct RepairRequestsListView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(rec.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.onSurface)
                     .lineLimit(2)
                 Spacer(minLength: 8)
                 Text("待上傳")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(TacticalGlassTheme.primary.opacity(0.15))
+                    .background(theme.primary.opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             Text("連線後將建立於伺服器；可先新增執行紀錄並一併上傳。")
                 .font(.caption)
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
                 pendingRecordSheetParent = PendingRepairParentTarget(id: rec.id)
@@ -581,11 +583,11 @@ struct RepairRequestsListView: View {
         .padding(14)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                .fill(theme.surfaceContainer.opacity(0.95))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.primary.opacity(0.25), lineWidth: 1)
+                .strokeBorder(theme.primary.opacity(0.25), lineWidth: 1)
         }
     }
 
@@ -604,24 +606,24 @@ struct RepairRequestsListView: View {
                                 Capsule()
                                     .fill(
                                         model.statusFilter == filter
-                                            ? TacticalGlassTheme.primary.opacity(0.22)
-                                            : TacticalGlassTheme.surfaceContainerHighest.opacity(0.75)
+                                            ? theme.primary.opacity(0.22)
+                                            : theme.surfaceContainerHighest.opacity(0.75)
                                     )
                             }
                             .overlay {
                                 Capsule()
                                     .strokeBorder(
                                         model.statusFilter == filter
-                                            ? TacticalGlassTheme.primary.opacity(0.55)
-                                            : TacticalGlassTheme.ghostBorder,
+                                            ? theme.primary.opacity(0.55)
+                                            : theme.ghostBorder,
                                         lineWidth: 1
                                     )
                             }
                     }
                     .foregroundStyle(
                         model.statusFilter == filter
-                            ? TacticalGlassTheme.primary
-                            : TacticalGlassTheme.mutedLabel
+                            ? theme.primary
+                            : theme.mutedLabel
                     )
                     .buttonStyle(.plain)
                 }
@@ -647,14 +649,14 @@ struct RepairRequestsListView: View {
             HStack(spacing: 12) {
                 Label(item.problemCategory, systemImage: "tag")
                     .font(.caption)
-                    .foregroundStyle(TacticalGlassTheme.primary.opacity(0.9))
+                    .foregroundStyle(theme.primary.opacity(0.9))
                 if item.isSecondRepair {
                     Text("二次報修")
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Capsule().fill(TacticalGlassTheme.tertiary.opacity(0.15)))
+                        .background(Capsule().fill(theme.tertiary.opacity(0.15)))
                 }
             }
 
@@ -666,16 +668,16 @@ struct RepairRequestsListView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainer)
+                .fill(theme.surfaceContainer)
         }
     }
 
     private func statusBadge(_ status: String) -> some View {
         let (text, color): (String, Color) = {
             switch status {
-            case "completed": ("已完成", TacticalGlassTheme.statusSuccess)
-            case "in_progress": ("進行中", TacticalGlassTheme.primary)
-            default: (status, TacticalGlassTheme.mutedLabel)
+            case "completed": ("已完成", theme.statusSuccess)
+            case "in_progress": ("進行中", theme.primary)
+            default: (status, theme.mutedLabel)
             }
         }()
         return Text(text)
@@ -688,6 +690,8 @@ struct RepairRequestsListView: View {
 }
 
 private struct RepairListSearchSessionView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     let projectId: String
     @Bindable var model: RepairListViewModel
@@ -703,14 +707,14 @@ private struct RepairListSearchSessionView: View {
         .navigationBarBackButtonHidden(true)
         .navigationTitle("搜尋報修")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") {
                     dismiss()
                 }
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
             }
         }
     }
@@ -772,6 +776,8 @@ private enum RepairDetailPrimaryTab: String, CaseIterable {
 }
 
 struct RepairRequestDetailView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let repairId: String
     let accessToken: String
@@ -789,8 +795,8 @@ struct RepairRequestDetailView: View {
                 if model.isLoading && model.repair == nil {
                     Spacer(minLength: 0)
                     ProgressView("載入中…")
-                        .tint(TacticalGlassTheme.primary)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .tint(theme.primary)
+                        .foregroundStyle(theme.mutedLabel)
                         .frame(maxWidth: .infinity)
                     Spacer(minLength: 0)
                 } else if let err = model.errorMessage, model.repair == nil {
@@ -807,7 +813,7 @@ struct RepairRequestDetailView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(theme.primary)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -855,16 +861,16 @@ struct RepairRequestDetailView: View {
                 .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("報修詳情")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             if primaryTab == .detail, model.repair != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("編輯") { showEditRepair = true }
-                        .foregroundStyle(TacticalGlassTheme.primary)
+                        .foregroundStyle(theme.primary)
                 }
             }
         }
@@ -923,10 +929,10 @@ struct RepairRequestDetailView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("尚無紀錄")
                             .font(.subheadline)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         Text("點右下角 ＋ 新增報修紀錄（可附照片）。")
                             .font(.footnote)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                            .foregroundStyle(theme.mutedLabel.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -947,7 +953,7 @@ struct RepairRequestDetailView: View {
                                 } label: {
                                     Label("編輯", systemImage: "pencil")
                                 }
-                                .tint(TacticalGlassTheme.primary)
+                                .tint(theme.primary)
                             }
                     }
                 }
@@ -965,7 +971,7 @@ struct RepairRequestDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("#\(r.id.prefix(8).uppercased())")
                     .font(.tacticalMonoFixed(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.onSurface)
                 Text(repairStatusText(r.status))
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 10)
@@ -973,14 +979,14 @@ struct RepairRequestDetailView: View {
                     .background(
                         Capsule().fill(
                             r.status == "completed"
-                                ? TacticalGlassTheme.statusSuccess.opacity(0.2)
-                                : TacticalGlassTheme.primary.opacity(0.2)
+                                ? theme.statusSuccess.opacity(0.2)
+                                : theme.primary.opacity(0.2)
                         )
                     )
                     .foregroundStyle(
                         r.status == "completed"
-                            ? TacticalGlassTheme.statusSuccess
-                            : TacticalGlassTheme.primary
+                            ? theme.statusSuccess
+                            : theme.primary
                     )
             }
             Spacer()
@@ -999,7 +1005,7 @@ struct RepairRequestDetailView: View {
                 if r.isSecondRepair {
                     Text("二次報修")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
                 labeled("交屋日", value: r.deliveryDate ?? "—", mono: true)
                 labeled("修繕完成日", value: r.repairDate ?? "—", mono: true)
@@ -1012,7 +1018,7 @@ struct RepairRequestDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("報修內容")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .tracking(0.8)
                 Text(r.repairContent)
                     .font(.body)
@@ -1025,7 +1031,7 @@ struct RepairRequestDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("備註")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                     Text(remarks)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -1038,7 +1044,7 @@ struct RepairRequestDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("照片")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .padding(.horizontal, 4)
                 TacticalPhotoAlbumGrid(photos: photos, columnCount: 3, spacing: 10)
                     .padding(.horizontal, 4)
@@ -1051,7 +1057,7 @@ struct RepairRequestDetailView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("附件")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                     ForEach(attachments) { a in
                         Text(a.fileName)
                             .font(.tacticalMonoFixed(size: 12, weight: .regular))
@@ -1327,6 +1333,8 @@ final class RepairEditViewModel {
 }
 
 struct RepairEditView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let repairId: String
     let accessToken: String
@@ -1345,7 +1353,7 @@ struct RepairEditView: View {
                 if let err = vm.errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -1362,7 +1370,7 @@ struct RepairEditView: View {
                                 .textInputAutocapitalization(.sentences)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.28))
+                                .fill(theme.primary.opacity(0.28))
                                 .frame(height: 1)
                         }
                         Menu {
@@ -1401,7 +1409,7 @@ struct RepairEditView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("照片")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         FieldFormPhotoStrip(
                             remotePhotoIds: edit.committedPhotoIds,
                             localPreviewImages: edit.mergedLocalPhotoPreviews,
@@ -1418,7 +1426,7 @@ struct RepairEditView: View {
                         if edit.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(edit.committedPhotoIds.count + edit.photoPickerItems.count + edit.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -1430,7 +1438,7 @@ struct RepairEditView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("附件")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         ForEach(edit.committedFileAttachments, id: \.id) { att in
                             HStack {
                                 Text(att.fileName)
@@ -1442,7 +1450,7 @@ struct RepairEditView: View {
                                     edit.committedFileAttachments.removeAll { $0.id == att.id }
                                 }
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.tertiary)
+                                .foregroundStyle(theme.tertiary)
                             }
                         }
                         if edit.remainingFileSlots > 0 {
@@ -1451,12 +1459,12 @@ struct RepairEditView: View {
                             } label: {
                                 Label("加入檔案", systemImage: "paperclip")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                    .foregroundStyle(theme.mutedLabel)
                             }
                         } else {
                             Text("附件已達 30 個上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("附件 \(edit.committedFileAttachments.count + edit.extraFiles.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -1480,7 +1488,7 @@ struct RepairEditView: View {
                 } label: {
                     if vm.isSaving {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("儲存變更")
                     }
@@ -1491,7 +1499,7 @@ struct RepairEditView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onChange(of: edit.photoPickerFingerprint) { _, _ in
             Task { await edit.refreshPhotoPreviews() }
         }
@@ -1525,12 +1533,12 @@ struct RepairEditView: View {
         }
         .navigationTitle("編輯報修")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
             }
         }
         .task {
@@ -1785,6 +1793,8 @@ final class RepairRecordCreateViewModel {
 }
 
 struct RepairRecordCreateView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let repairId: String?
     let pendingRepairOutboxParentId: UUID?
@@ -1820,7 +1830,7 @@ struct RepairRecordCreateView: View {
                 if let err = model.errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -1828,16 +1838,16 @@ struct RepairRecordCreateView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("報修紀錄內容".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(1.2)
                             TextField("", text: $model.contentText, axis: .vertical)
                                 .font(.subheadline)
                                 .lineLimit(6 ... 14)
                                 .textInputAutocapitalization(.sentences)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(theme.onSurface)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.28))
+                                .fill(theme.primary.opacity(0.28))
                                 .frame(height: 1)
                         }
                     }
@@ -1847,7 +1857,7 @@ struct RepairRecordCreateView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         FieldFormPhotoStrip(
                             remotePhotoIds: [],
                             localPreviewImages: model.mergedLocalPhotoPreviews,
@@ -1864,7 +1874,7 @@ struct RepairRecordCreateView: View {
                         if model.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(model.photoPickerItems.count + model.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -1889,7 +1899,7 @@ struct RepairRecordCreateView: View {
                 } label: {
                     if createModel.isSubmitting {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("送出紀錄")
                     }
@@ -1900,7 +1910,7 @@ struct RepairRecordCreateView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onChange(of: model.photoPickerFingerprint) { _, _ in
             Task { await model.refreshPhotoPreviews() }
         }
@@ -1912,18 +1922,20 @@ struct RepairRecordCreateView: View {
         }
         .navigationTitle(pendingRepairOutboxParentId != nil ? "新增紀錄（待同步報修）" : "新增報修紀錄")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
             }
         }
     }
 }
 
 struct RepairRecordEditView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let repairId: String
     let record: RepairExecutionRecordDTO
@@ -1983,7 +1995,7 @@ struct RepairRecordEditView: View {
                 if let err = errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -1991,15 +2003,15 @@ struct RepairRecordEditView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("報修紀錄內容".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             TextField("", text: $contentText, axis: .vertical)
                                 .font(.subheadline)
                                 .lineLimit(6 ... 18)
                                 .textInputAutocapitalization(.sentences)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(theme.onSurface)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.28))
+                                .fill(theme.primary.opacity(0.28))
                                 .frame(height: 1)
                         }
                     }
@@ -2009,7 +2021,7 @@ struct RepairRecordEditView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         FieldFormPhotoStrip(
                             remotePhotoIds: committedPhotoIds,
                             localPreviewImages: mergedLocalPhotoPreviews,
@@ -2026,7 +2038,7 @@ struct RepairRecordEditView: View {
                         if remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(committedPhotoIds.count + photoPickerItems.count + cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -2041,7 +2053,7 @@ struct RepairRecordEditView: View {
                 } label: {
                     if isSaving {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("儲存")
                     }
@@ -2052,7 +2064,7 @@ struct RepairRecordEditView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onAppear {
             contentText = record.content
             committedPhotoIds = record.photos?.map(\.id) ?? []
@@ -2070,12 +2082,12 @@ struct RepairRecordEditView: View {
         }
         .navigationTitle("編輯報修紀錄")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
             }
         }
     }

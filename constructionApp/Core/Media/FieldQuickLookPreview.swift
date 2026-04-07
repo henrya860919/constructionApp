@@ -55,6 +55,7 @@ private struct FieldQuickLookRepresentable: UIViewControllerRepresentable {
 
 /// 全螢幕 Quick Look，頂部「完成」關閉。
 struct FieldQuickLookPreviewSheet: View {
+    @Environment(\.fieldTheme) private var theme
     let fileURL: URL
     var title: String?
     @Environment(\.dismiss) private var dismiss
@@ -69,12 +70,12 @@ struct FieldQuickLookPreviewSheet: View {
             } label: {
                 Text("完成")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.onPrimary)
+                    .foregroundStyle(theme.onPrimary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background {
                         Capsule(style: .continuous)
-                            .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.92))
+                            .fill(theme.surfaceContainerHighest.opacity(0.92))
                     }
             }
             .buttonStyle(.plain)
@@ -82,6 +83,6 @@ struct FieldQuickLookPreviewSheet: View {
             .padding(.trailing, 16)
             .accessibilityLabel("關閉預覽")
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
     }
 }

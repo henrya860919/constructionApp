@@ -41,9 +41,23 @@ extension View {
     }
 }
 
+// MARK: - Module page title
+
+struct ObsidianModuleHeaderView: View {
+    @Environment(\.fieldTheme) private var theme
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .tacticalTitle(28, weight: .bold)
+            .foregroundStyle(theme.onSurface)
+    }
+}
+
 // MARK: - Tonal card (no structural 1px rules — layering only)
 
 struct TacticalGlassCard<Content: View>: View {
+    @Environment(\.fieldTheme) private var theme
     var cornerRadius: CGFloat = TacticalGlassTheme.cornerRadius
     var elevated: Bool = false
     @ViewBuilder var content: () -> Content
@@ -56,8 +70,8 @@ struct TacticalGlassCard<Content: View>: View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
                         elevated
-                            ? TacticalGlassTheme.surfaceContainerHighest
-                            : TacticalGlassTheme.surfaceContainer
+                            ? theme.surfaceContainerHighest
+                            : theme.surfaceContainer
                     )
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -67,15 +81,17 @@ struct TacticalGlassCard<Content: View>: View {
 // MARK: - Buttons
 
 struct TacticalPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.fieldTheme) private var theme
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline.weight(.semibold))
-            .foregroundStyle(TacticalGlassTheme.onPrimary)
+            .foregroundStyle(theme.onPrimary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 13)
             .background {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.primaryGradient())
+                    .fill(theme.primaryGradient())
                     .opacity(configuration.isPressed ? 0.88 : 1)
             }
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
@@ -84,19 +100,21 @@ struct TacticalPrimaryButtonStyle: ButtonStyle {
 }
 
 struct TacticalSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.fieldTheme) private var theme
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(TacticalGlassTheme.primary)
+            .foregroundStyle(theme.primary)
             .padding(.horizontal, 18)
             .padding(.vertical, 9)
             .background {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(configuration.isPressed ? 0.95 : 0.88))
+                    .fill(theme.surfaceContainerHighest.opacity(configuration.isPressed ? 0.95 : 0.88))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .strokeBorder(TacticalGlassTheme.outlineVariant.opacity(0.2), lineWidth: 1)
+                    .strokeBorder(theme.ghostBorder, lineWidth: 1)
             }
     }
 }
@@ -104,19 +122,20 @@ struct TacticalSecondaryButtonStyle: ButtonStyle {
 // MARK: - FAB — rounded square + gradient (Obsidian spec)
 
 struct ObsidianSquareFAB: View {
+    @Environment(\.fieldTheme) private var theme
     var systemImage: String = "plus"
     var accessibilityLabel: String
 
     var body: some View {
         Image(systemName: systemImage)
             .font(.title2.weight(.bold))
-            .foregroundStyle(Color.black.opacity(0.92))
+            .foregroundStyle(theme.onPrimaryGradientForeground)
             .frame(width: 56, height: 56)
             .background {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.primaryGradient())
+                    .fill(theme.primaryGradient())
             }
-            .shadow(color: TacticalGlassTheme.ambientShadow, radius: 40, x: 0, y: 12)
+            .shadow(color: theme.ambientShadow, radius: 40, x: 0, y: 12)
             .accessibilityLabel(accessibilityLabel)
     }
 }
@@ -125,6 +144,7 @@ struct ObsidianSquareFAB: View {
 
 /// 列表根頁：膠囊外觀，點擊後 `push` 至搜尋頁（Tactical Obsidian）。
 struct ObsidianListSearchPillAffordance: View {
+    @Environment(\.fieldTheme) private var theme
     var placeholder: String
     /// 非空時顯示目前已套用的關鍵字摘要。
     var activeQuerySummary: String?
@@ -137,33 +157,33 @@ struct ObsidianListSearchPillAffordance: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
             if trimmedSummary.isEmpty {
                 Text(placeholder)
                     .font(.body)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Text(trimmedSummary)
                     .font(.body)
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(theme.onSurface)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.65))
+                .foregroundStyle(theme.mutedLabel.opacity(0.65))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
         .background {
             Capsule(style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+                .fill(theme.surfaceContainerHighest.opacity(0.72))
         }
         .overlay {
             Capsule(style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
         .contentShape(Capsule(style: .continuous))
         .accessibilityAddTraits(.isButton)
@@ -173,6 +193,7 @@ struct ObsidianListSearchPillAffordance: View {
 
 /// 搜尋專用頁頂部：膠囊輸入（與電話 app 類似的形狀，配色維持 Obsidian）。
 struct ObsidianSearchModePillField: View {
+    @Environment(\.fieldTheme) private var theme
     @Binding var text: String
     var placeholder: String
     @FocusState.Binding var isFocused: Bool
@@ -181,7 +202,7 @@ struct ObsidianSearchModePillField: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .foregroundStyle(.primary)
@@ -193,7 +214,7 @@ struct ObsidianSearchModePillField: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.body)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                        .foregroundStyle(theme.mutedLabel.opacity(0.85))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("清除搜尋文字")
@@ -203,11 +224,11 @@ struct ObsidianSearchModePillField: View {
         .padding(.vertical, 11)
         .background {
             Capsule(style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+                .fill(theme.surfaceContainerHighest.opacity(0.72))
         }
         .overlay {
             Capsule(style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
     }
@@ -246,6 +267,7 @@ extension View {
 // MARK: - Underline focus field — primary indicator (not blue)
 
 struct TacticalTextField: View {
+    @Environment(\.fieldTheme) private var theme
     let title: String
     @Binding var text: String
     var keyboard: UIKeyboardType = .default
@@ -257,7 +279,7 @@ struct TacticalTextField: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.2)
 
             Group {
@@ -278,13 +300,13 @@ struct TacticalTextField: View {
             .padding(.vertical, 4)
 
             Rectangle()
-                .fill(focused ? TacticalGlassTheme.primary : TacticalGlassTheme.primary.opacity(0.25))
+                .fill(focused ? theme.primary : theme.primary.opacity(0.25))
                 .frame(height: focused ? 2 : 1)
                 .animation(.easeOut(duration: 0.2), value: focused)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(TacticalGlassTheme.surfaceContainerLowest.opacity(0.95))
+        .background(theme.surfaceContainerLowest.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous))
     }
 }
@@ -329,6 +351,7 @@ private func tacticalFallbackScreenWidth() -> CGFloat {
 
 /// 相簿式方格（固定正方形、`scaledToFill` 裁切），點擊以全螢幕左右滑檢視。遠端／本機共用此元件。
 struct TacticalPhotoAlbumGrid: View {
+    @Environment(\.fieldTheme) private var theme
     let source: TacticalPhotoAlbumSource
     var columnCount: Int = 3
     var spacing: CGFloat = 10
@@ -418,7 +441,7 @@ struct TacticalPhotoAlbumGrid: View {
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainerLowest)
+                    .fill(theme.surfaceContainerLowest)
                 switch source {
                 case .remote(let photos):
                     AuthenticatedRemoteImage(apiPath: photos[index].url)

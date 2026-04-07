@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(SessionManager.self) private var session
     @Environment(FieldAppVersionChecker.self) private var versionChecker
+    @Environment(\.colorScheme) private var colorScheme
 
     /// 用於觸發根流程過場（略過連線中狀態的細微變化）。
     private var rootFlowStep: Int {
@@ -21,14 +22,18 @@ struct ContentView: View {
         return 3
     }
 
+    private var fieldTheme: FieldThemePalette {
+        FieldThemePalette.palette(for: colorScheme)
+    }
+
     var body: some View {
         Group {
             if !versionChecker.didFinishLaunchCheck {
                 ZStack {
-                    TacticalGlassTheme.surface
+                    fieldTheme.surface
                         .ignoresSafeArea()
                     ProgressView("檢查更新…")
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(fieldTheme.primary)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -38,10 +43,10 @@ struct ContentView: View {
                     .transition(.opacity)
             } else if session.isRestoringSession {
                 ZStack {
-                    TacticalGlassTheme.surface
+                    fieldTheme.surface
                         .ignoresSafeArea()
                     ProgressView("連線中…")
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(fieldTheme.primary)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -58,12 +63,13 @@ struct ContentView: View {
             }
         }
         .animation(AppViewMotion.rootFlow, value: rootFlowStep)
-        .preferredColorScheme(.dark)
+        .environment(\.fieldTheme, FieldThemePalette.palette(for: colorScheme))
     }
 }
 
 #Preview {
     ContentView()
         .environment(SessionManager())
+        .environment(FieldAppearanceSettings())
         .environment(FieldAppVersionChecker.shared)
 }

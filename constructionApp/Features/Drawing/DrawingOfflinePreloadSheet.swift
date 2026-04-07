@@ -113,6 +113,8 @@ final class DrawingOfflinePreloadController {
 }
 
 struct DrawingOfflinePreloadSheet: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let tree: [DrawingNodeDTO]
     @Environment(\.dismiss) private var dismiss
@@ -132,24 +134,24 @@ struct DrawingOfflinePreloadSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("離線圖說空間")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(0.8)
                             Text(
                                 "\(FieldByteCountFormatter.megabytesString(vaultUsed))"
                                     + " / \(FieldByteCountFormatter.megabytesString(vaultBudget))"
                             )
                             .font(.title3.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
                             Text("尚可約 \(FieldByteCountFormatter.megabytesString(vaultAvail)) · 與列表圖片／網路快取（120MB）分開計算")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
 
                     Text("將下載本專案圖說樹狀中每個項目的最新檔（與線上預覽相同來源），供離線時 Quick Look。空間不足時須先釋出後再繼續。")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.88))
+                        .foregroundStyle(theme.onSurface.opacity(0.88))
                         .fixedSize(horizontal: false, vertical: true)
 
                     if controller.total > 0 {
@@ -158,14 +160,14 @@ struct DrawingOfflinePreloadSheet: View {
                                 value: Double(controller.completed),
                                 total: Double(max(controller.total, 1))
                             )
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                             Text("進度 \(controller.completed)／\(controller.total)")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             if !controller.currentLabel.isEmpty {
                                 Text(controller.currentLabel)
                                     .font(.caption)
-                                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                    .foregroundStyle(theme.mutedLabel)
                                     .lineLimit(2)
                             }
                         }
@@ -174,7 +176,7 @@ struct DrawingOfflinePreloadSheet: View {
                     if let msg = controller.lastMessage {
                         Text(msg)
                             .font(.footnote)
-                            .foregroundStyle(controller.stoppedByQuota ? TacticalGlassTheme.tertiary : TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(controller.stoppedByQuota ? theme.tertiary : theme.mutedLabel)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
@@ -197,13 +199,13 @@ struct DrawingOfflinePreloadSheet: View {
                         } label: {
                             if controller.isRunning {
                                 ProgressView()
-                                    .tint(TacticalGlassTheme.onPrimary)
+                                    .tint(theme.onPrimary)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 13)
                             } else {
                                 Text(primaryButtonTitle)
                                     .font(.headline.weight(.semibold))
-                                    .foregroundStyle(TacticalGlassTheme.onPrimary)
+                                    .foregroundStyle(theme.onPrimary)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 13)
                             }
@@ -214,24 +216,24 @@ struct DrawingOfflinePreloadSheet: View {
                         if controller.stoppedByQuota {
                             Text("請至「設定」→「儲存空間」釋出離線圖說預載後，再點「繼續下載」。")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
                 .padding(20)
             }
-            .background(TacticalGlassTheme.surface)
+            .background(theme.surface)
             .navigationTitle("預先下載離線圖說")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("關閉") {
                         dismiss()
                     }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                 }
             }
             .onAppear {

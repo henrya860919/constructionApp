@@ -66,6 +66,7 @@ struct FieldCameraImagePicker: UIViewControllerRepresentable {
 
 /// 相簿（PhotosPicker）＋拍照並列；無相機時僅顯示相簿。
 struct FieldPhotoLibraryAndCameraButtons: View {
+    @Environment(\.fieldTheme) private var theme
     @Binding var photoPickerItems: [PhotosPickerItem]
     var maxPickerSelection: Int
     var remainingSlots: Int
@@ -86,7 +87,7 @@ struct FieldPhotoLibraryAndCameraButtons: View {
                     ) {
                         Label(photoLibraryTitle, systemImage: photoLibrarySystemImage)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                     }
 
                     if FieldCameraCapture.isCameraAvailable {
@@ -95,7 +96,7 @@ struct FieldPhotoLibraryAndCameraButtons: View {
                         } label: {
                             Label("拍照", systemImage: "camera.fill")
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                     }
                 }

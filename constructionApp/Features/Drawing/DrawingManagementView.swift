@@ -117,6 +117,7 @@ private extension View {
 // MARK: - Root
 
 struct DrawingManagementRootView: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @Environment(FieldNetworkMonitor.self) private var network
     @State private var vm = DrawingTreeViewModel()
@@ -130,17 +131,17 @@ struct DrawingManagementRootView: View {
             } else {
                 Text("缺少專案或登入狀態")
                     .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
     }
 
     @ViewBuilder
     private func mainStack(projectId: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            obsidianModuleHeader(title: "圖說管理")
+            ObsidianModuleHeaderView(title: "圖說管理")
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
@@ -175,7 +176,7 @@ struct DrawingManagementRootView: View {
             if let err = vm.errorMessage {
                 Text(err)
                     .font(.footnote)
-                    .foregroundStyle(TacticalGlassTheme.statusDanger)
+                    .foregroundStyle(theme.statusDanger)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 8)
             }
@@ -209,31 +210,31 @@ struct DrawingManagementRootView: View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
                 .frame(width: 28, alignment: .center)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.onSurface)
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainer)
+                .fill(theme.surfaceContainer)
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
     }
 }
@@ -241,6 +242,8 @@ struct DrawingManagementRootView: View {
 // MARK: - 離線：已預載檔案列表（Quick Look）
 
 private struct DrawingOfflinePreviewListView: View {
+    @Environment(\.fieldTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     let projectId: String
     @Bindable var vm: DrawingTreeViewModel
     @State private var quickLookSession: DrawingQuickLookSession?
@@ -261,13 +264,13 @@ private struct DrawingOfflinePreviewListView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "tray")
                         .font(.largeTitle)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                     Text("尚無已預載的圖說檔案")
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.onSurface)
                     Text("本列表僅顯示已下載至離線圖說空間的檔案。釋出空間請至「設定」→「儲存空間」。")
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                 }
@@ -281,21 +284,21 @@ private struct DrawingOfflinePreviewListView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: "doc.richtext")
                                     .font(.title3.weight(.semibold))
-                                    .foregroundStyle(TacticalGlassTheme.primary.opacity(0.95))
+                                    .foregroundStyle(theme.primary.opacity(0.95))
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(vm.node(byId: entry.nodeId)?.name ?? entry.fileName)
                                         .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(theme.onSurface)
                                         .multilineTextAlignment(.leading)
                                     Text(entry.fileName)
                                         .font(.caption)
-                                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                        .foregroundStyle(theme.mutedLabel)
                                         .lineLimit(2)
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "eye.circle.fill")
                                     .font(.body)
-                                    .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                                    .foregroundStyle(theme.mutedLabel.opacity(0.85))
                             }
                             .padding(.vertical, 4)
                         }
@@ -310,11 +313,11 @@ private struct DrawingOfflinePreviewListView: View {
                 .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin, for: .scrollContent)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("離線圖說預覽")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .fullScreenCover(item: $quickLookSession) { session in
             FieldQuickLookPreviewSheet(fileURL: session.fileURL, title: session.title)
         }
@@ -338,6 +341,7 @@ private struct DrawingOfflinePreviewListView: View {
 // MARK: - Search session（只列出符合的圖說葉節點，不顯示資料夾）
 
 private struct DrawingManagementSearchSessionView: View {
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     @Bindable var vm: DrawingTreeViewModel
     @FocusState private var searchFieldFocused: Bool
@@ -369,7 +373,7 @@ private struct DrawingManagementSearchSessionView: View {
                 bottomContentMargin: 28
             )
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("搜尋圖說")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -382,6 +386,7 @@ private struct DrawingManagementSearchSessionView: View {
 }
 
 private struct DrawingLeafSearchResultsBody: View {
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     @Bindable var vm: DrawingTreeViewModel
     let matchingLeaves: [DrawingNodeDTO]
@@ -393,19 +398,19 @@ private struct DrawingLeafSearchResultsBody: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if vm.isLoading, vm.tree.isEmpty {
                     ProgressView()
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(theme.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 48)
                 } else if trimmedQuery.isEmpty {
                     Text("輸入圖說項目名稱，將列出專案內所有符合的圖說（不含資料夾）。")
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 24)
                 } else if matchingLeaves.isEmpty {
                     Text("找不到符合的圖說項目")
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 36)
                 } else {
@@ -424,6 +429,7 @@ private struct DrawingLeafSearchResultsBody: View {
 // MARK: - Folder level
 
 private struct DrawingFolderDrillDownView: View {
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let folderNodeId: String
     @Bindable var vm: DrawingTreeViewModel
@@ -446,11 +452,11 @@ private struct DrawingFolderDrillDownView: View {
             } else {
                 Text("找不到資料夾")
                     .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .drawingFolderNavigation(projectId: projectId, vm: vm)
     }
 }
@@ -458,6 +464,7 @@ private struct DrawingFolderDrillDownView: View {
 // MARK: - List body
 
 private struct DrawingNodesListBody: View {
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let nodes: [DrawingNodeDTO]
     @Bindable var vm: DrawingTreeViewModel
@@ -468,13 +475,13 @@ private struct DrawingNodesListBody: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 if vm.isLoading, nodes.isEmpty {
                     ProgressView()
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(theme.primary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 48)
                 } else if !vm.isLoading, nodes.isEmpty {
                     Text("尚無圖說資料")
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 36)
                 } else {
@@ -498,30 +505,31 @@ private struct DrawingNodesListBody: View {
 }
 
 private struct DrawingFolderRowLabel: View {
+    @Environment(\.fieldTheme) private var theme
     let name: String
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "folder.fill")
                 .font(.body.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.primary.opacity(0.95))
+                .foregroundStyle(theme.primary.opacity(0.95))
             Text(name)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(theme.onSurface)
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.75))
+                .foregroundStyle(theme.mutedLabel.opacity(0.75))
         }
         .padding(16)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainer)
+                .fill(theme.surfaceContainer)
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
         .accessibilityLabel("資料夾 \(name)")
     }
@@ -530,6 +538,7 @@ private struct DrawingFolderRowLabel: View {
 // MARK: - Leaf card
 
 private struct DrawingLeafCardView: View {
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let node: DrawingNodeDTO
     @Bindable var vm: DrawingTreeViewModel
@@ -596,36 +605,36 @@ private struct DrawingLeafCardView: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "doc.richtext")
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(TacticalGlassTheme.primary.opacity(0.95))
+                        .foregroundStyle(theme.primary.opacity(0.95))
                     VStack(alignment: .leading, spacing: 4) {
                         Text(displayFileName)
                             .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
                             .multilineTextAlignment(.leading)
                         Text(versionSummary)
                             .font(.caption)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                     }
                     Spacer(minLength: 0)
                     if isPreparingPreview {
                         ProgressView()
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                     } else {
                         HStack(spacing: 8) {
                             if isLatestFilePreloaded {
                                 Text("已預載")
                                     .font(.caption2.weight(.bold))
-                                    .foregroundStyle(TacticalGlassTheme.primary)
+                                    .foregroundStyle(theme.primary)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background {
                                         Capsule()
-                                            .fill(TacticalGlassTheme.primary.opacity(0.18))
+                                            .fill(theme.primary.opacity(0.18))
                                     }
                             }
                             Image(systemName: "eye.circle.fill")
                                 .font(.title3)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                                .foregroundStyle(theme.mutedLabel.opacity(0.85))
                         }
                     }
                 }
@@ -647,11 +656,11 @@ private struct DrawingLeafCardView: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label)
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .frame(width: 44, alignment: .leading)
             Text(value)
                 .font(.caption)
-                .foregroundStyle(Color.white.opacity(0.88))
+                .foregroundStyle(theme.onSurface.opacity(0.88))
                 .multilineTextAlignment(.leading)
         }
     }

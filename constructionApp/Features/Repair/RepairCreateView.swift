@@ -278,6 +278,8 @@ private extension String {
 }
 
 struct RepairCreateView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let accessToken: String
     var onFinished: () async -> Void
@@ -296,7 +298,7 @@ struct RepairCreateView: View {
                 if let err = vm.errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -314,7 +316,7 @@ struct RepairCreateView: View {
                                 .textInputAutocapitalization(.sentences)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.28))
+                                .fill(theme.primary.opacity(0.28))
                                 .frame(height: 1)
                         }
                         TacticalTextField(title: "戶別（選填）", text: $vm.unitLabel)
@@ -330,14 +332,14 @@ struct RepairCreateView: View {
                                 Text("已完成").tag("completed")
                             }
                             .pickerStyle(.segmented)
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                         }
 
                         Toggle(isOn: $vm.isSecondRepair) {
                             Text("是否二次維修")
                                 .font(.subheadline)
                         }
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(theme.primary)
 
                         TacticalTextField(title: "交付日期 YYYY-MM-DD（選填）", text: $vm.deliveryDateYMD)
                         TacticalTextField(title: "修繕完成日 YYYY-MM-DD（選填）", text: $vm.repairDateYMD)
@@ -348,7 +350,7 @@ struct RepairCreateView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("備註（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         TextField("", text: $vm.remarks, axis: .vertical)
                             .font(.subheadline)
                             .lineLimit(2 ... 4)
@@ -361,7 +363,7 @@ struct RepairCreateView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         FieldFormPhotoStrip(
                             remotePhotoIds: [],
                             localPreviewImages: vm.mergedLocalPhotoPreviews,
@@ -378,7 +380,7 @@ struct RepairCreateView: View {
                         if vm.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(vm.photoPickerItems.count + vm.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -390,13 +392,13 @@ struct RepairCreateView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("附件（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         Button {
                             showDocImporter = true
                         } label: {
                             Label("加入檔案", systemImage: "paperclip")
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         ForEach(Array(createModel.extraFiles.enumerated()), id: \.offset) { _, f in
                             Text(f.name)
@@ -417,7 +419,7 @@ struct RepairCreateView: View {
                 } label: {
                     if createModel.isSubmitting {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("建立報修")
                     }
@@ -428,7 +430,7 @@ struct RepairCreateView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onChange(of: vm.photoPickerFingerprint) { _, _ in
             Task { await vm.refreshPhotoPreviews() }
         }
@@ -440,14 +442,14 @@ struct RepairCreateView: View {
         }
         .navigationTitle("新增報修")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") {
                     dismiss()
                 }
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
             }
         }
         .fileImporter(
@@ -491,15 +493,15 @@ struct RepairCreateView: View {
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                 }
                 .padding(.vertical, 7)
                 .padding(.horizontal, 12)
-                .background(TacticalGlassTheme.surfaceContainerLowest.opacity(0.9))
+                .background(theme.surfaceContainerLowest.opacity(0.9))
                 .clipShape(RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous))
             }
             Rectangle()
-                .fill(TacticalGlassTheme.primary.opacity(0.28))
+                .fill(theme.primary.opacity(0.28))
                 .frame(height: 1)
         }
     }

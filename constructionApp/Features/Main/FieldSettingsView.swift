@@ -8,21 +8,22 @@ import SwiftUI
 // MARK: - Toolbar avatar
 
 struct AccountToolbarAvatar: View {
+    @Environment(\.fieldTheme) private var theme
     let user: AuthUser?
     var size: CGFloat = 36
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(TacticalGlassTheme.primaryGradient())
+                .fill(theme.primaryGradient())
             Text(initials)
                 .font(.system(size: max(12, size * 0.36), weight: .bold))
-                .foregroundStyle(Color.black.opacity(0.88))
+                .foregroundStyle(theme.onPrimaryGradientForeground)
         }
         .frame(width: size, height: size)
         .overlay {
             Circle()
-                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
         .accessibilityLabel("帳號與設定")
     }
@@ -47,11 +48,15 @@ struct AccountToolbarAvatar: View {
 // MARK: - Settings
 
 struct FieldSettingsView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
+    @Environment(FieldAppearanceSettings.self) private var appearanceSettings
     @Environment(SessionManager.self) private var session
     @Environment(\.dismiss) private var dismiss
     @State private var storageBreakdown = FieldCacheStorage.usageBreakdown()
 
     var body: some View {
+        @Bindable var appearanceSettings = appearanceSettings
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if let user = session.currentUser {
@@ -59,7 +64,7 @@ struct FieldSettingsView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("個人資訊")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(0.8)
 
                             HStack(alignment: .center, spacing: 14) {
@@ -67,13 +72,13 @@ struct FieldSettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(user.name)
                                         .font(.title3.weight(.semibold))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(theme.onSurface)
                                     Text(user.email)
                                         .font(.subheadline)
-                                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                        .foregroundStyle(theme.mutedLabel)
                                     Text(profileStorageSummary)
                                         .font(.caption2)
-                                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.95))
+                                        .foregroundStyle(theme.mutedLabel.opacity(0.95))
                                         .padding(.top, 2)
                                 }
                                 Spacer(minLength: 0)
@@ -93,19 +98,35 @@ struct FieldSettingsView: View {
 
                 TacticalGlassCard {
                     VStack(alignment: .leading, spacing: 12) {
+                        Text("外觀")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(theme.mutedLabel)
+                            .tracking(0.8)
+                        Picker("介面外觀", selection: $appearanceSettings.mode) {
+                            ForEach(FieldAppearanceMode.allCases, id: \.self) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityLabel("介面外觀")
+                    }
+                }
+
+                TacticalGlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("當前專案")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                             .tracking(0.8)
 
                         Text(session.selectedProjectName ?? "未選擇")
                             .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
 
                         if let id = session.selectedProjectId {
                             Text(id)
                                 .font(.tacticalMonoFixed(size: 12, weight: .medium))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .lineLimit(2)
                         }
 
@@ -125,16 +146,16 @@ struct FieldSettingsView: View {
                 } label: {
                     Text("登出")
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(TacticalGlassTheme.statusDanger)
+                        .foregroundStyle(theme.statusDanger)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
                         .background {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                .fill(TacticalGlassTheme.statusDanger.opacity(0.14))
+                                .fill(theme.statusDanger.opacity(0.14))
                         }
                         .overlay {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                .strokeBorder(TacticalGlassTheme.statusDanger.opacity(0.35), lineWidth: 1)
+                                .strokeBorder(theme.statusDanger.opacity(0.35), lineWidth: 1)
                         }
                 }
                 .buttonStyle(.plain)
@@ -143,19 +164,19 @@ struct FieldSettingsView: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("設定")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("關閉") {
                     dismiss()
                 }
                 .font(.body.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
             }
         }
         .onAppear {
@@ -178,16 +199,16 @@ struct FieldSettingsView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(0.5)
             if mono {
                 Text(value)
                     .font(.tacticalMonoFixed(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(theme.onSurface.opacity(0.9))
             } else {
                 Text(value)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(theme.onSurface.opacity(0.9))
             }
         }
         .padding(.top, 4)

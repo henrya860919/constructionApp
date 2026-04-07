@@ -329,6 +329,7 @@ private enum SelfInspectionRecordListDestination: Hashable {
 // MARK: - Module root
 
 struct SelfInspectionModuleView: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @State private var model = SelfInspectionTemplatesListViewModel()
     @State private var navigateTo: SelfInspectionTemplateRoute?
@@ -350,11 +351,11 @@ struct SelfInspectionModuleView: View {
                 }
             } else {
                 Text("缺少專案或登入狀態")
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .task {
             if let pid = session.selectedProjectId, session.isAuthenticated {
                 await model.load(projectId: pid, session: session)
@@ -373,6 +374,7 @@ struct SelfInspectionModuleView: View {
 // MARK: - Templates list
 
 private struct SelfInspectionTemplatesListContent: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     let projectId: String
     @Bindable var model: SelfInspectionTemplatesListViewModel
@@ -380,14 +382,14 @@ private struct SelfInspectionTemplatesListContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            obsidianModuleHeader(title: "自主查驗")
+            ObsidianModuleHeaderView(title: "自主查驗")
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
 
             Text("選擇已匯入專案之樣板，檢視或新增查驗紀錄。")
                 .font(.subheadline)
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
 
@@ -395,14 +397,14 @@ private struct SelfInspectionTemplatesListContent: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(TacticalGlassTheme.tertiary)
+                            .foregroundStyle(theme.tertiary)
                         Text("無法載入樣板")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
                     }
                     Text(err)
                         .font(.caption)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("重試") {
                         Task { await model.load(projectId: projectId, session: session) }
@@ -413,11 +415,11 @@ private struct SelfInspectionTemplatesListContent: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background {
                     RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                        .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                        .fill(theme.surfaceContainer.opacity(0.95))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                        .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                        .strokeBorder(theme.tertiary.opacity(0.35), lineWidth: 1)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
@@ -426,8 +428,8 @@ private struct SelfInspectionTemplatesListContent: View {
             if model.isLoading && model.templates.isEmpty {
                 Spacer()
                 ProgressView("載入中…")
-                    .tint(TacticalGlassTheme.primary)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .tint(theme.primary)
+                    .foregroundStyle(theme.mutedLabel)
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else if model.templates.isEmpty {
@@ -438,7 +440,7 @@ private struct SelfInspectionTemplatesListContent: View {
                         .foregroundStyle(.primary)
                     Text("請至儀表板將自主檢查樣板匯入本專案後，即可於此填寫紀錄。")
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28)
                 }
@@ -479,15 +481,15 @@ private struct SelfInspectionTemplatesListContent: View {
                 Spacer()
                 Text("\(t.recordCount) 筆")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(TacticalGlassTheme.primary.opacity(0.18)))
+                    .background(Capsule().fill(theme.primary.opacity(0.18)))
             }
             if let desc = t.description?.trimmingCharacters(in: .whitespacesAndNewlines), !desc.isEmpty {
                 Text(desc)
                     .font(.footnote)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .lineLimit(2)
             }
         }
@@ -495,11 +497,11 @@ private struct SelfInspectionTemplatesListContent: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+                .fill(theme.surfaceContainerLow.opacity(0.92))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
     }
 }
@@ -507,6 +509,8 @@ private struct SelfInspectionTemplatesListContent: View {
 // MARK: - Records list + FAB
 
 struct SelfInspectionTemplateRecordsView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @Environment(FieldOutboxStore.self) private var outbox
 
@@ -555,14 +559,14 @@ struct SelfInspectionTemplateRecordsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(TacticalGlassTheme.tertiary)
+                                .foregroundStyle(theme.tertiary)
                             Text("無法載入紀錄")
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(theme.onSurface)
                         }
                         Text(err)
                             .font(.caption)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                             .fixedSize(horizontal: false, vertical: true)
                         Button("重試") {
                             Task { await reloadHubAndRecords() }
@@ -573,11 +577,11 @@ struct SelfInspectionTemplateRecordsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                            .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                            .fill(theme.surfaceContainer.opacity(0.95))
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                            .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                            .strokeBorder(theme.tertiary.opacity(0.35), lineWidth: 1)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -586,8 +590,8 @@ struct SelfInspectionTemplateRecordsView: View {
                 if model.isLoading && showRecordsEmptyPlaceholder {
                     Spacer()
                     ProgressView("載入中…")
-                        .tint(TacticalGlassTheme.primary)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .tint(theme.primary)
+                        .foregroundStyle(theme.mutedLabel)
                         .frame(maxWidth: .infinity)
                     Spacer()
                 } else if showRecordsEmptyPlaceholder {
@@ -595,10 +599,10 @@ struct SelfInspectionTemplateRecordsView: View {
                     VStack(spacing: 8) {
                         Image(systemName: "tray")
                             .font(.title2)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         Text("尚無查驗紀錄")
                             .font(.subheadline)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                     }
                     .frame(maxWidth: .infinity)
                     Spacer()
@@ -635,7 +639,7 @@ struct SelfInspectionTemplateRecordsView: View {
                                 } label: {
                                     Label("編輯", systemImage: "pencil")
                                 }
-                                .tint(TacticalGlassTheme.primary)
+                                .tint(theme.primary)
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button(role: .destructive) {
@@ -652,7 +656,7 @@ struct SelfInspectionTemplateRecordsView: View {
                                 HStack {
                                     if model.isLoadingMore {
                                         ProgressView()
-                                            .tint(TacticalGlassTheme.primary)
+                                            .tint(theme.primary)
                                     }
                                     Text(model.isLoadingMore ? "載入中…" : "載入更多")
                                         .font(.subheadline.weight(.semibold))
@@ -661,7 +665,7 @@ struct SelfInspectionTemplateRecordsView: View {
                                 .padding(.vertical, 12)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(TacticalGlassTheme.primary)
+                            .foregroundStyle(theme.primary)
                             .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -692,11 +696,11 @@ struct SelfInspectionTemplateRecordsView: View {
             .allowsHitTesting(fabScrollIdle)
             .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle(templateName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .navigationDestination(item: $navigateToRecord) { dest in
             switch dest {
             case .serverRecord(let recordId):
@@ -854,25 +858,25 @@ struct SelfInspectionTemplateRecordsView: View {
                 Spacer(minLength: 8)
                 Text("待上傳")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(TacticalGlassTheme.primary.opacity(0.15))
+                    .background(theme.primary.opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             Text("連線後將建立於伺服器。")
                 .font(.footnote)
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+                .fill(theme.surfaceContainerLow.opacity(0.92))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.primary.opacity(0.28), lineWidth: 1)
+                .strokeBorder(theme.primary.opacity(0.28), lineWidth: 1)
         }
     }
 
@@ -902,29 +906,29 @@ struct SelfInspectionTemplateRecordsView: View {
                 Spacer()
                 Text(shortDate(from: rec.createdAt))
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             }
             if let dateLine {
                 Text("檢查日期：\(dateLine)")
                     .font(.footnote)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             }
             if let who {
                 Text("填寫：\(who)")
                     .font(.footnote)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             }
 
             if total == 0 {
                 Text("檢查進度：載入樣板中…")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("檢查進度 \(done)/\(total)")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         Spacer()
                         if hasFailItems {
                             HStack(spacing: 4) {
@@ -932,18 +936,18 @@ struct SelfInspectionTemplateRecordsView: View {
                                 Text(failCount == 1 ? "1 項不合格" : "\(failCount) 項不合格")
                             }
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.tertiary)
+                            .foregroundStyle(theme.tertiary)
                         } else if isComplete {
                             HStack(spacing: 4) {
                                 Image(systemName: "checkmark.circle.fill")
                                 Text("已完成")
                             }
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.primary)
+                            .foregroundStyle(theme.primary)
                         }
                     }
                     ProgressView(value: ratio)
-                        .tint(hasFailItems ? TacticalGlassTheme.tertiary : TacticalGlassTheme.primary)
+                        .tint(hasFailItems ? theme.tertiary : theme.primary)
                 }
             }
         }
@@ -951,12 +955,12 @@ struct SelfInspectionTemplateRecordsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+                .fill(theme.surfaceContainerLow.opacity(0.92))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
                 .strokeBorder(
-                    hasFailItems ? TacticalGlassTheme.tertiary.opacity(0.55) : TacticalGlassTheme.ghostBorder,
+                    hasFailItems ? theme.tertiary.opacity(0.55) : theme.ghostBorder,
                     lineWidth: hasFailItems ? 1.5 : 1
                 )
         }

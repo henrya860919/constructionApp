@@ -37,6 +37,7 @@ final class LoginViewModel {
 }
 
 struct LoginView: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @State private var model = LoginViewModel()
     @FocusState private var focusedField: Field?
@@ -48,13 +49,13 @@ struct LoginView: View {
     var body: some View {
         @Bindable var model = model
         ZStack {
-            TacticalGlassTheme.surface
+            theme.surface
                 .ignoresSafeArea()
 
             LinearGradient(
                 colors: [
-                    TacticalGlassTheme.surfaceContainerLow.opacity(0.4),
-                    TacticalGlassTheme.surface,
+                    theme.surfaceContainerLow.opacity(0.4),
+                    theme.surface,
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -90,7 +91,7 @@ struct LoginView: View {
                             if let err = model.errorMessage {
                                 Text(err)
                                     .font(.subheadline)
-                                    .foregroundStyle(TacticalGlassTheme.tertiary)
+                                    .foregroundStyle(theme.tertiary)
                                     .accessibilityLabel("錯誤：\(err)")
                             }
 
@@ -99,7 +100,7 @@ struct LoginView: View {
                             } label: {
                                 if model.isLoading {
                                     ProgressView()
-                                        .tint(TacticalGlassTheme.onPrimary)
+                                        .tint(theme.onPrimary)
                                 } else {
                                     Text("登入")
                                 }
@@ -124,16 +125,16 @@ struct LoginView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Nexa")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
                 .tracking(2)
 
             Text("Nexa Construction App")
                 .tacticalDisplay(32, weight: .bold)
-                .foregroundStyle(.white)
+                .foregroundStyle(theme.onSurface)
 
             Text(AppDateDisplay.string(from: Date.now))
                 .font(.tacticalMono(.subheadline, weight: .medium))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .padding(.top, 4)
         }
     }
@@ -142,4 +143,7 @@ struct LoginView: View {
 #Preview {
     LoginView()
         .environment(SessionManager())
+        .environment(FieldAppearanceSettings())
+        .preferredColorScheme(.light)
+        .fieldThemePalette(FieldThemePalette.palette(for: .light))
 }

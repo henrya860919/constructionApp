@@ -7,6 +7,7 @@ import SwiftUI
 
 /// 以 Bearer token 載入後端 `/api/v1/files/...` 圖片（AsyncImage 不會帶 Authorization）。
 struct AuthenticatedRemoteImage: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     let apiPath: String
     /// 全螢幕預覽等情境：完整顯示圖片（預設為方格縮放填滿裁切）。
@@ -28,7 +29,7 @@ struct AuthenticatedRemoteImage: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgressView()
-                    .tint(TacticalGlassTheme.primary)
+                    .tint(theme.primary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
