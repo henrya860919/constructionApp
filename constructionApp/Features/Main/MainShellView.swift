@@ -6,6 +6,8 @@
 import SwiftUI
 
 struct MainShellView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @Environment(FieldOutboxStore.self) private var outbox
     @Environment(FieldNetworkMonitor.self) private var network
@@ -33,11 +35,11 @@ struct MainShellView: View {
                 }
                 .animation(AppViewMotion.moduleTab, value: tab)
             }
-            .background(TacticalGlassTheme.surface)
+            .background(theme.surface)
             .navigationTitle(session.selectedProjectName ?? "專案")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
@@ -50,18 +52,18 @@ struct MainShellView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .tint(TacticalGlassTheme.primary)
+        .tint(theme.primary)
         .overlay(alignment: .top) {
             if let text = syncAcknowledgementBanner {
                 Text(text)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.onPrimary)
+                    .foregroundStyle(theme.onPrimary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 11)
                     .background {
                         Capsule(style: .continuous)
-                            .fill(TacticalGlassTheme.primary.opacity(0.94))
+                            .fill(theme.primary.opacity(0.94))
                     }
                     .padding(.top, 10)
                     .shadow(color: .black.opacity(0.35), radius: 10, y: 4)

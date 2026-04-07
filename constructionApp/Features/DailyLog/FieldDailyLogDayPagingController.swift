@@ -11,6 +11,7 @@ import UIKit
 // MARK: - Read-only day stack（供分頁與其他畫面共用）
 
 struct FieldDailyLogReadOnlyDayContent: View {
+    @Environment(\.fieldTheme) private var theme
     let persisted: FieldDailyLogPersistedDay
 
     var body: some View {
@@ -24,7 +25,7 @@ struct FieldDailyLogReadOnlyDayContent: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("天氣")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.1)
 
             HStack(spacing: 10) {
@@ -32,20 +33,20 @@ struct FieldDailyLogReadOnlyDayContent: View {
                     let on = persisted.weatherRaw == w.rawValue
                     Text(w.rawValue)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(on ? TacticalGlassTheme.onPrimary : Color.white.opacity(0.5))
+                        .foregroundStyle(on ? theme.onPrimary : theme.onSurface)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
                         .background {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
                                 .fill(
                                     on
-                                        ? AnyShapeStyle(TacticalGlassTheme.primaryGradient())
-                                        : AnyShapeStyle(TacticalGlassTheme.surfaceContainerHighest.opacity(0.55))
+                                        ? AnyShapeStyle(theme.primaryGradient())
+                                        : AnyShapeStyle(theme.surfaceContainerHighest.opacity(0.55))
                                 )
                         }
                         .overlay {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: on ? 0 : 1)
+                                .strokeBorder(theme.ghostBorder, lineWidth: on ? 0 : 1)
                         }
                         .accessibilityAddTraits(on ? .isSelected : [])
                 }
@@ -54,7 +55,7 @@ struct FieldDailyLogReadOnlyDayContent: View {
             if (persisted.weatherRaw ?? "").isEmpty {
                 Text("尚未填寫天氣")
                     .font(.footnote)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                    .foregroundStyle(theme.mutedLabel.opacity(0.85))
                     .padding(.top, 2)
             }
         }
@@ -64,22 +65,22 @@ struct FieldDailyLogReadOnlyDayContent: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("重要事項")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.1)
 
             let trimmed = persisted.notes.trimmingCharacters(in: .whitespacesAndNewlines)
             Text(trimmed.isEmpty ? "尚無內容，點右下角編輯以新增。" : trimmed)
                 .font(.body)
-                .foregroundStyle(trimmed.isEmpty ? TacticalGlassTheme.mutedLabel.opacity(0.65) : Color.white.opacity(0.92))
+                .foregroundStyle(trimmed.isEmpty ? theme.mutedLabel.opacity(0.65) : theme.onSurface)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
                 .background {
                     RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                        .fill(TacticalGlassTheme.surfaceContainerLowest.opacity(0.95))
+                        .fill(theme.surfaceContainerLowest.opacity(0.95))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                        .strokeBorder(TacticalGlassTheme.outlineVariant.opacity(0.18), lineWidth: 1)
+                        .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
                 }
         }
     }
@@ -88,6 +89,7 @@ struct FieldDailyLogReadOnlyDayContent: View {
 // MARK: - Single page（給 HostingController）
 
 struct FieldDailyLogDaySwipeHostingPage: View {
+    @Environment(\.fieldTheme) private var theme
     let date: Date
     @Bindable var store: FieldDailyLogLocalStore
 
@@ -103,7 +105,7 @@ struct FieldDailyLogDaySwipeHostingPage: View {
         FieldDailyLogReadOnlyDayContent(persisted: persisted)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(TacticalGlassTheme.surface)
+            .background(theme.surface)
     }
 }
 

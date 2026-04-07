@@ -398,7 +398,7 @@
 				CODE_SIGN_ENTITLEMENTS = constructionApp/constructionApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8G8ATU3977;
+				DEVELOPMENT_TEAM = R9XY53Q328;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Supporting/Info.plist;
@@ -432,7 +432,7 @@
 				CODE_SIGN_ENTITLEMENTS = constructionApp/constructionAppRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 8G8ATU3977;
+				DEVELOPMENT_TEAM = R9XY53Q328;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Supporting/Info.plist;

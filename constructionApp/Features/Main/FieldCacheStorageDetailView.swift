@@ -6,6 +6,8 @@
 import SwiftUI
 
 struct FieldCacheStorageDetailView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     @State private var breakdown = FieldCacheStorage.usageBreakdown()
     @State private var showClearManagedConfirm = false
     @State private var showClearOfflineConfirm = false
@@ -33,7 +35,7 @@ struct FieldCacheStorageDetailView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("一般暫存（列表圖、網路）")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(0.8)
 
                             Text(
@@ -41,7 +43,7 @@ struct FieldCacheStorageDetailView: View {
                                     + " / \(FieldByteCountFormatter.megabytesString(managedBudget))"
                             )
                             .font(.title2.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
 
                             usageBar(ratio: managedUsageRatio)
 
@@ -54,13 +56,13 @@ struct FieldCacheStorageDetailView: View {
                     } label: {
                         if isClearingManaged {
                             ProgressView()
-                                .tint(TacticalGlassTheme.primary)
+                                .tint(theme.primary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                         } else {
                             Text("清除一般暫存")
                                 .font(.headline.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .foregroundStyle(theme.primary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                         }
@@ -68,11 +70,11 @@ struct FieldCacheStorageDetailView: View {
                     .buttonStyle(.plain)
                     .background {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                            .fill(TacticalGlassTheme.surfaceContainer)
+                            .fill(theme.surfaceContainer)
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
                     }
                     .disabled(isClearingManaged)
                 }
@@ -82,7 +84,7 @@ struct FieldCacheStorageDetailView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("離線圖說預載")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(0.8)
 
                             Text(
@@ -90,13 +92,13 @@ struct FieldCacheStorageDetailView: View {
                                     + " / \(FieldByteCountFormatter.megabytesString(offlineBudget))"
                             )
                             .font(.title2.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
 
                             usageBar(ratio: offlineUsageRatio)
 
                             Text("與上方一般暫存分開計算，不會被自動清理；供離線預覽圖說時使用，可於此清除。")
                                 .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.85))
+                                .foregroundStyle(theme.onSurface.opacity(0.85))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -106,13 +108,13 @@ struct FieldCacheStorageDetailView: View {
                     } label: {
                         if isClearingOffline {
                             ProgressView()
-                                .tint(TacticalGlassTheme.primary)
+                                .tint(theme.primary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                         } else {
                             Text("清除離線圖說預載")
                                 .font(.headline.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .foregroundStyle(theme.primary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                         }
@@ -120,11 +122,11 @@ struct FieldCacheStorageDetailView: View {
                     .buttonStyle(.plain)
                     .background {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                            .fill(TacticalGlassTheme.surfaceContainer)
+                            .fill(theme.surfaceContainer)
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
                     }
                     .disabled(isClearingOffline)
                 }
@@ -133,17 +135,17 @@ struct FieldCacheStorageDetailView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("說明")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                             .tracking(0.8)
 
                         Text("一般暫存為自動快取，可隨時清除；清除後列表與預覽圖會重新下載。")
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(theme.onSurface.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
 
                         Text("尚未上傳至伺服器的紀錄與照片不會被清除。")
                             .font(.subheadline)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -152,11 +154,11 @@ struct FieldCacheStorageDetailView: View {
             .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("儲存空間")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .onAppear {
             reloadBreakdown()
         }
@@ -185,10 +187,10 @@ struct FieldCacheStorageDetailView: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.5))
+                    .fill(theme.surfaceContainerHighest.opacity(0.5))
                     .frame(height: 8)
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.primaryGradient())
+                    .fill(theme.primaryGradient())
                     .frame(width: max(0, geo.size.width * ratio), height: 8)
             }
         }
@@ -213,12 +215,12 @@ struct FieldCacheStorageDetailView: View {
         HStack {
             Text(title.uppercased())
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(0.5)
             Spacer(minLength: 8)
             Text(FieldByteCountFormatter.megabytesString(bytes))
                 .font(.tacticalMonoFixed(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(theme.onSurface.opacity(0.9))
         }
     }
 
@@ -246,6 +248,7 @@ struct FieldCacheStorageDetailView: View {
 // MARK: - 設定列表列（摘要）
 
 struct FieldCacheStorageSettingsRow: View {
+    @Environment(\.fieldTheme) private var theme
     @State private var breakdown = FieldCacheStorage.usageBreakdown()
 
     private var managedBudget: Int64 { FieldCacheStorage.displayBudgetBytes }
@@ -259,27 +262,27 @@ struct FieldCacheStorageSettingsRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("儲存空間")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.onSurface)
                     Text(
                         "一般暫存 \(FieldByteCountFormatter.megabytesString(breakdown.managedCacheBytes))"
                             + " / \(FieldByteCountFormatter.megabytesString(managedBudget))"
                     )
                     .font(.caption)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     Text(
                         "離線圖說 \(FieldByteCountFormatter.megabytesString(breakdown.offlineDrawingBytes))"
                             + " / \(FieldByteCountFormatter.megabytesString(offlineBudget))"
                     )
                     .font(.caption)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     Text("與圖說預載分開計算 · 點進管理")
                         .font(.caption2)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.9))
+                        .foregroundStyle(theme.mutedLabel.opacity(0.9))
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             }
             .contentShape(Rectangle())
         }

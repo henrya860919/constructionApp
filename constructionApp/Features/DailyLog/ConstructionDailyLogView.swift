@@ -58,6 +58,8 @@ private enum FieldDailyLogCalendar {
 // MARK: - Browse (read-only)
 
 struct ConstructionDailyLogView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @State private var store = FieldDailyLogLocalStore()
     @State private var centerWeekStart = FieldDailyLogCalendar.startOfWeek(containing: Date())
@@ -79,11 +81,11 @@ struct ConstructionDailyLogView: View {
             } else {
                 Text("缺少專案或登入狀態")
                     .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onChange(of: session.selectedProjectId) { _, newId in
             if let id = newId {
                 store.activateProject(id)
@@ -160,16 +162,16 @@ struct ConstructionDailyLogView: View {
         } label: {
             Text("今天")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 11)
                 .background {
                     Capsule(style: .continuous)
-                        .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+                        .fill(theme.surfaceContainerHighest.opacity(0.72))
                 }
                 .overlay {
                     Capsule(style: .continuous)
-                        .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                        .strokeBorder(theme.ghostBorder, lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)
@@ -184,23 +186,23 @@ struct ConstructionDailyLogView: View {
             HStack(spacing: 8) {
                 Image(systemName: "calendar")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                 Text(monthYearLabel(for: selectedDate))
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(theme.onSurface)
                 Image(systemName: "chevron.down")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.75))
+                    .foregroundStyle(theme.mutedLabel.opacity(0.75))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 11)
             .background {
                 Capsule(style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainerHighest.opacity(0.72))
+                    .fill(theme.surfaceContainerHighest.opacity(0.72))
             }
             .overlay {
                 Capsule(style: .continuous)
-                    .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                    .strokeBorder(theme.ghostBorder, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -290,16 +292,16 @@ struct ConstructionDailyLogView: View {
             VStack(spacing: 5) {
                 Text(sym)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(selected ? TacticalGlassTheme.primary : TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(selected ? theme.primary : theme.onSurface.opacity(0.5))
                 ZStack {
                     if selected {
                         Circle()
-                            .fill(TacticalGlassTheme.primaryGradient())
+                            .fill(theme.primaryGradient())
                             .frame(width: 36, height: 36)
                     }
                     Text("\(dayNum)")
                         .font(.system(.body, design: .rounded).weight(.semibold))
-                        .foregroundStyle(selected ? Color.white : Color.white.opacity(0.92))
+                        .foregroundStyle(selected ? theme.onPrimaryGradientForeground : theme.onSurface)
                 }
                 .frame(height: 36)
             }
@@ -319,7 +321,7 @@ struct ConstructionDailyLogView: View {
         f.dateFormat = "yyyy年M月d日 EEEE"
         return Text(f.string(from: selectedDate))
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.white.opacity(0.88))
+            .foregroundStyle(theme.onSurface)
             .multilineTextAlignment(.center)
     }
 
@@ -346,21 +348,21 @@ struct ConstructionDailyLogView: View {
                 )
                 .datePickerStyle(.graphical)
                 .labelsHidden()
-                .tint(TacticalGlassTheme.primary)
+                .tint(theme.primary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 12)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(TacticalGlassTheme.surface)
+            .background(theme.surface)
             .navigationTitle("選擇日期")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { showMonthPicker = false }
-                        .foregroundStyle(TacticalGlassTheme.primary)
+                        .foregroundStyle(theme.primary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") {
@@ -368,7 +370,7 @@ struct ConstructionDailyLogView: View {
                         showMonthPicker = false
                     }
                     .fontWeight(.semibold)
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                 }
             }
         }
@@ -394,6 +396,8 @@ struct ConstructionDailyLogView: View {
 // MARK: - Edit
 
 struct ConstructionDailyLogEditView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let date: Date
     @Bindable var store: FieldDailyLogLocalStore
@@ -415,7 +419,7 @@ struct ConstructionDailyLogEditView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text(dayTitleString)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.white.opacity(0.88))
+                    .foregroundStyle(theme.onSurface)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
                     .padding(.top, 4)
@@ -439,11 +443,11 @@ struct ConstructionDailyLogEditView: View {
         }
         .contentMargins(.bottom, TacticalGlassTheme.tabBarScrollBottomMargin + (isDirty ? 8 : 0), for: .scrollContent)
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("編輯日報")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .onAppear {
             store.activateProject(projectId)
             syncFromStore()
@@ -465,7 +469,7 @@ struct ConstructionDailyLogEditView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("天氣")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.1)
 
             HStack(spacing: 10) {
@@ -478,20 +482,20 @@ struct ConstructionDailyLogEditView: View {
                     } label: {
                         Text(w.rawValue)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(on ? TacticalGlassTheme.onPrimary : Color.white.opacity(0.88))
+                            .foregroundStyle(on ? theme.onPrimary : theme.onSurface)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
                             .background {
                                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
                                     .fill(
                                         on
-                                            ? AnyShapeStyle(TacticalGlassTheme.primaryGradient())
-                                            : AnyShapeStyle(TacticalGlassTheme.surfaceContainerHighest.opacity(0.88))
+                                            ? AnyShapeStyle(theme.primaryGradient())
+                                            : AnyShapeStyle(theme.surfaceContainerHighest.opacity(0.88))
                                     )
                             }
                             .overlay {
                                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                    .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: on ? 0 : 1)
+                                    .strokeBorder(theme.ghostBorder, lineWidth: on ? 0 : 1)
                             }
                     }
                     .buttonStyle(.plain)
@@ -504,21 +508,21 @@ struct ConstructionDailyLogEditView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("重要事項")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.1)
 
             ZStack(alignment: .topLeading) {
                 if notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("記錄當日重點…")
                         .font(.body)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.55))
+                        .foregroundStyle(theme.mutedLabel.opacity(0.55))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 14)
                         .allowsHitTesting(false)
                 }
                 TextEditor(text: $notesText)
                     .font(.body)
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(theme.onSurface)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 200)
                     .padding(.horizontal, 10)
@@ -530,11 +534,11 @@ struct ConstructionDailyLogEditView: View {
             }
             .background {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainerLowest.opacity(0.95))
+                    .fill(theme.surfaceContainerLowest.opacity(0.95))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .strokeBorder(TacticalGlassTheme.outlineVariant.opacity(0.18), lineWidth: 1)
+                    .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
             }
         }
     }

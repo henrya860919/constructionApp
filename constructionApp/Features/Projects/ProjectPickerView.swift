@@ -70,19 +70,20 @@ final class ProjectPickerViewModel {
 }
 
 struct ProjectPickerView: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @State private var model = ProjectPickerViewModel()
 
     var body: some View {
         ZStack {
-            TacticalGlassTheme.surface.ignoresSafeArea()
+            theme.surface.ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("選擇專案")
                             .tacticalTitle(26, weight: .bold)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
 
                         Text("對應網頁版專案工作區 `/p/:projectId`")
                             .font(.subheadline)
@@ -91,7 +92,7 @@ struct ProjectPickerView: View {
                         if let user = session.currentUser {
                             Text(user.name.uppercased())
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .foregroundStyle(theme.primary)
                                 .tracking(1.2)
                                 .padding(.top, 4)
                         }
@@ -100,21 +101,21 @@ struct ProjectPickerView: View {
 
                     if model.isLoading {
                         ProgressView()
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 40)
                     } else if let err = model.errorMessage {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(spacing: 8) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(TacticalGlassTheme.tertiary)
+                                    .foregroundStyle(theme.tertiary)
                                 Text("無法載入專案")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(theme.onSurface)
                             }
                             Text(err)
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .fixedSize(horizontal: false, vertical: true)
                             Button("重試") {
                                 Task { await model.load(session: session) }
@@ -125,17 +126,17 @@ struct ProjectPickerView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                                .fill(theme.surfaceContainer.opacity(0.95))
                         }
                         .overlay {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                                .strokeBorder(theme.tertiary.opacity(0.35), lineWidth: 1)
                         }
                     } else if model.projects.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "folder.badge.questionmark")
                                 .font(.title2)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             Text("尚無可存取專案")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -159,7 +160,7 @@ struct ProjectPickerView: View {
                                     HStack {
                                         if model.isLoadingMore {
                                             ProgressView()
-                                                .tint(TacticalGlassTheme.primary)
+                                                .tint(theme.primary)
                                         }
                                         Text(model.isLoadingMore ? "載入中…" : "載入更多")
                                             .font(.subheadline.weight(.semibold))
@@ -168,7 +169,7 @@ struct ProjectPickerView: View {
                                     .padding(.vertical, 12)
                                 }
                                 .buttonStyle(.plain)
-                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .foregroundStyle(theme.primary)
                                 .disabled(model.isLoadingMore)
                             }
                         }
@@ -205,7 +206,7 @@ struct ProjectPickerView: View {
                         .tracking(0.8)
                     Text(project.id)
                         .font(.tacticalMonoFixed(size: 11, weight: .medium))
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -219,12 +220,12 @@ struct ProjectPickerView: View {
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.75))
+                .foregroundStyle(theme.mutedLabel.opacity(0.75))
         }
         .padding(18)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainer)
+                .fill(theme.surfaceContainer)
         }
     }
 }
@@ -232,4 +233,6 @@ struct ProjectPickerView: View {
 #Preview {
     ProjectPickerView()
         .environment(SessionManager())
+        .environment(FieldAppearanceSettings())
+        .fieldThemePalette(FieldThemePalette.palette(for: .light))
 }

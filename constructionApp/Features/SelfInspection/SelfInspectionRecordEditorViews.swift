@@ -149,6 +149,7 @@ private func uploadSelfInspectionCameraJPEGs(
 // MARK: - Shared form scroll
 
 private struct SelfInspectionRecordFormScrollContent: View {
+    @Environment(\.fieldTheme) private var theme
     let hub: SelfInspectionTemplateHubDTO
     let projectDisplayName: String
     let accessToken: String
@@ -164,7 +165,7 @@ private struct SelfInspectionRecordFormScrollContent: View {
                 if let submitError, !submitError.isEmpty {
                     Text(submitError)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -194,31 +195,31 @@ private struct SelfInspectionRecordFormScrollContent: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(header.inspectionDateLabel.uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(1.2)
                             DatePicker("", selection: $form.inspectionDate, displayedComponents: .date)
                                 .labelsHidden()
-                                .tint(TacticalGlassTheme.primary)
+                                .tint(theme.primary)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.25))
+                                .fill(theme.primary.opacity(0.25))
                                 .frame(height: 1)
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(TacticalGlassTheme.surfaceContainerLowest.opacity(0.95))
+                        .background(theme.surfaceContainerLowest.opacity(0.95))
                         .clipShape(RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous))
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text(header.timingSectionLabel.uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(1.2)
                             timingPills(options: header.timingOptions)
                         }
 
                         Text(header.resultSectionLabel)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                             .padding(.top, 4)
                     }
                 }
@@ -256,7 +257,7 @@ private struct SelfInspectionRecordFormScrollContent: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
 
                         FieldFormPhotoStrip(
                             remotePhotoIds: form.committedPhotoIds,
@@ -275,7 +276,7 @@ private struct SelfInspectionRecordFormScrollContent: View {
                         if form.remainingPhotoSlots <= 0 {
                             Text("已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
 
                         Text("已選 \(form.committedPhotoIds.count + form.photoPickerItems.count + form.cameraPhotoJPEGs.count)／30")
@@ -309,21 +310,21 @@ private struct SelfInspectionRecordFormScrollContent: View {
                                 Capsule()
                                     .fill(
                                         selected
-                                            ? TacticalGlassTheme.primary.opacity(0.22)
-                                            : TacticalGlassTheme.surfaceContainerHighest.opacity(0.75)
+                                            ? theme.primary.opacity(0.22)
+                                            : theme.surfaceContainerHighest.opacity(0.75)
                                     )
                             }
                             .overlay {
                                 Capsule()
                                     .strokeBorder(
                                         selected
-                                            ? TacticalGlassTheme.primary.opacity(0.55)
-                                            : TacticalGlassTheme.ghostBorder,
+                                            ? theme.primary.opacity(0.55)
+                                            : theme.ghostBorder,
                                         lineWidth: 1
                                     )
                             }
                     }
-                    .foregroundStyle(selected ? TacticalGlassTheme.primary : TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(selected ? theme.primary : theme.mutedLabel)
                     .buttonStyle(.plain)
                 }
             }
@@ -341,13 +342,13 @@ private struct SelfInspectionRecordFormScrollContent: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.categoryLabel)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(TacticalGlassTheme.primary)
+                        .foregroundStyle(theme.primary)
                     Text(item.itemName)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(item.standardText)
                         .font(.caption)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -371,11 +372,11 @@ private struct SelfInspectionRecordFormScrollContent: View {
         .padding(14)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+                .fill(theme.surfaceContainerLow.opacity(0.92))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
     }
 
@@ -384,15 +385,15 @@ private struct SelfInspectionRecordFormScrollContent: View {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .bold))
                 .frame(width: 44, height: 44)
-                .foregroundStyle(isOn ? TacticalGlassTheme.primary : TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(isOn ? theme.primary : theme.mutedLabel)
                 .background {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(isOn ? TacticalGlassTheme.primary.opacity(0.2) : TacticalGlassTheme.surfaceContainerHighest.opacity(0.6))
+                        .fill(isOn ? theme.primary.opacity(0.2) : theme.surfaceContainerHighest.opacity(0.6))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(
-                            isOn ? TacticalGlassTheme.primary.opacity(0.65) : TacticalGlassTheme.ghostBorder,
+                            isOn ? theme.primary.opacity(0.65) : theme.ghostBorder,
                             lineWidth: isOn ? 2 : 1
                         )
                 }
@@ -404,20 +405,20 @@ private struct SelfInspectionRecordFormScrollContent: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.2)
             Text(value.isEmpty ? "—" : value)
                 .font(.subheadline)
                 .foregroundStyle(.primary)
                 .padding(.vertical, 4)
             Rectangle()
-                .fill(TacticalGlassTheme.primary.opacity(0.2))
+                .fill(theme.primary.opacity(0.2))
                 .frame(height: 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(TacticalGlassTheme.surfaceContainerLowest.opacity(0.95))
+        .background(theme.surfaceContainerLowest.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous))
     }
 
@@ -425,18 +426,18 @@ private struct SelfInspectionRecordFormScrollContent: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.2)
             content()
                 .padding(.vertical, 4)
             Rectangle()
-                .fill(TacticalGlassTheme.primary.opacity(0.25))
+                .fill(theme.primary.opacity(0.25))
                 .frame(height: 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(TacticalGlassTheme.surfaceContainerLowest.opacity(0.95))
+        .background(theme.surfaceContainerLowest.opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous))
     }
 }
@@ -444,6 +445,8 @@ private struct SelfInspectionRecordFormScrollContent: View {
 // MARK: - Create
 
 struct SelfInspectionCreateRecordView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let accessToken: String
     let templateId: String
@@ -464,12 +467,12 @@ struct SelfInspectionCreateRecordView: View {
         Group {
             if isLoadingHub {
                 ProgressView("載入樣板…")
-                    .tint(TacticalGlassTheme.primary)
+                    .tint(theme.primary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = loadError {
                 Text(err)
                     .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.tertiary)
+                    .foregroundStyle(theme.tertiary)
                     .multilineTextAlignment(.center)
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -484,7 +487,7 @@ struct SelfInspectionCreateRecordView: View {
                 )
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .sheet(isPresented: $showCamera) {
             FieldCameraImagePicker(isPresented: $showCamera) { image in
                 form.appendCameraPhoto(image)
@@ -493,12 +496,12 @@ struct SelfInspectionCreateRecordView: View {
         }
         .navigationTitle("新增查驗")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button {
@@ -506,14 +509,14 @@ struct SelfInspectionCreateRecordView: View {
                 } label: {
                     if isSubmitting {
                         ProgressView()
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                     } else {
                         Text("送出")
                             .fontWeight(.semibold)
                     }
                 }
                 .disabled(isSubmitting || hub == nil)
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
             }
         }
         .task {
@@ -704,6 +707,8 @@ struct SelfInspectionCreateRecordView: View {
 // MARK: - Edit
 
 struct SelfInspectionEditRecordView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let accessToken: String
     let templateId: String
@@ -724,12 +729,12 @@ struct SelfInspectionEditRecordView: View {
         Group {
             if isLoading {
                 ProgressView("載入紀錄…")
-                    .tint(TacticalGlassTheme.primary)
+                    .tint(theme.primary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = loadError {
                 Text(err)
                     .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.tertiary)
+                    .foregroundStyle(theme.tertiary)
                     .multilineTextAlignment(.center)
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -744,7 +749,7 @@ struct SelfInspectionEditRecordView: View {
                 )
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .sheet(isPresented: $showCamera) {
             FieldCameraImagePicker(isPresented: $showCamera) { image in
                 form.appendCameraPhoto(image)
@@ -753,12 +758,12 @@ struct SelfInspectionEditRecordView: View {
         }
         .navigationTitle("編輯查驗")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button {
@@ -766,14 +771,14 @@ struct SelfInspectionEditRecordView: View {
                 } label: {
                     if isSubmitting {
                         ProgressView()
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                     } else {
                         Text("儲存")
                             .fontWeight(.semibold)
                     }
                 }
                 .disabled(isSubmitting || hub == nil)
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
             }
         }
         .task {
@@ -913,6 +918,8 @@ private enum SelfInspectionPendingDetailFactory {
 // MARK: - Detail (read-only)
 
 struct SelfInspectionRecordDetailView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let templateId: String
     let recordId: String
@@ -943,7 +950,7 @@ struct SelfInspectionRecordDetailView: View {
         Group {
             if isLoading {
                 ProgressView("載入中…")
-                    .tint(TacticalGlassTheme.primary)
+                    .tint(theme.primary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let err = loadError {
                 FieldCenteredRecordLoadErrorView(
@@ -959,11 +966,11 @@ struct SelfInspectionRecordDetailView: View {
                 )
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("查驗紀錄")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             if pendingOutboxEntryId == nil, record != nil, loadError == nil {
                 ToolbarItem(placement: .primaryAction) {
@@ -981,7 +988,7 @@ struct SelfInspectionRecordDetailView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.primary)
+                            .foregroundStyle(theme.primary)
                     }
                 }
             }
@@ -1047,22 +1054,22 @@ struct SelfInspectionRecordDetailView: View {
                 if let actionError, !actionError.isEmpty {
                     Text(actionError)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 if total == 0 {
                     Text("無法顯示檢查進度（缺少樣板結構）")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+                                .fill(theme.surfaceContainerLow.opacity(0.92))
                         }
                         .overlay {
                             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                                .strokeBorder(theme.ghostBorder, lineWidth: 1)
                         }
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1077,34 +1084,34 @@ struct SelfInspectionRecordDetailView: View {
                                     Text(failCount == 1 ? "1 項不合格" : "\(failCount) 項不合格")
                                 }
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.tertiary)
+                                .foregroundStyle(theme.tertiary)
                             } else if isComplete {
                                 HStack(spacing: 4) {
                                     Image(systemName: "checkmark.circle.fill")
                                     Text("已完成")
                                 }
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.primary)
+                                .foregroundStyle(theme.primary)
                             }
                         }
                         if hasFailItems, isComplete {
                             Text("已全部填寫，惟仍有不通過項目，請留意改善。")
                                 .font(.caption.weight(.medium))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         ProgressView(value: ratio)
-                            .tint(hasFailItems ? TacticalGlassTheme.tertiary : TacticalGlassTheme.primary)
+                            .tint(hasFailItems ? theme.tertiary : theme.primary)
                     }
                     .padding(14)
                     .background {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                            .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+                            .fill(theme.surfaceContainerLow.opacity(0.92))
                     }
                     .overlay {
                         RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
                             .strokeBorder(
-                                hasFailItems ? TacticalGlassTheme.tertiary.opacity(0.5) : TacticalGlassTheme.ghostBorder,
+                                hasFailItems ? theme.tertiary.opacity(0.5) : theme.ghostBorder,
                                 lineWidth: hasFailItems ? 1.5 : 1
                             )
                     }
@@ -1149,7 +1156,7 @@ struct SelfInspectionRecordDetailView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("待上傳照片")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             TacticalPhotoAlbumGrid(images: pendingLocalImages, columnCount: 3, spacing: 10)
                         }
                     }
@@ -1160,7 +1167,7 @@ struct SelfInspectionRecordDetailView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(showPendingPhotoSection ? "已上傳附件" : "照片")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             TacticalPhotoAlbumGrid(
                                 source: .remote(
                                     photoIds.map { id in
@@ -1191,7 +1198,7 @@ struct SelfInspectionRecordDetailView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1.0)
             Text(value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "—")
                 .font(.subheadline)
@@ -1216,13 +1223,13 @@ struct SelfInspectionRecordDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.categoryLabel)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(TacticalGlassTheme.primary)
+                        .foregroundStyle(theme.primary)
                     Text(item.itemName)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(item.standardText)
                         .font(.caption)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1230,14 +1237,14 @@ struct SelfInspectionRecordDetailView: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(isPass ? TacticalGlassTheme.primary : TacticalGlassTheme.mutedLabel.opacity(0.35))
+                            .foregroundStyle(isPass ? theme.primary : theme.mutedLabel.opacity(0.35))
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(isFail ? TacticalGlassTheme.tertiary : TacticalGlassTheme.mutedLabel.opacity(0.35))
+                            .foregroundStyle(isFail ? theme.tertiary : theme.mutedLabel.opacity(0.35))
                     }
                     .font(.title3)
                     Text(label)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                         .multilineTextAlignment(.trailing)
                 }
             }
@@ -1245,11 +1252,11 @@ struct SelfInspectionRecordDetailView: View {
         .padding(14)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainerLow.opacity(0.92))
+                .fill(theme.surfaceContainerLow.opacity(0.92))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.ghostBorder, lineWidth: 1)
+                .strokeBorder(theme.ghostBorder, lineWidth: 1)
         }
     }
 

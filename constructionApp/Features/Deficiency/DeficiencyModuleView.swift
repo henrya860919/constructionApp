@@ -198,6 +198,7 @@ private struct PendingDefectParentTarget: Identifiable {
 // MARK: - Module shell
 
 struct DeficiencyModuleView: View {
+    @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
     @State private var model = DefectListViewModel()
     @State private var fabScrollIdle = true
@@ -212,17 +213,18 @@ struct DeficiencyModuleView: View {
                 )
             } else {
                 Text("缺少專案或登入狀態")
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
     }
 }
 
 // MARK: - List
 
 struct DefectListView: View {
+    @Environment(\.fieldTheme) private var theme
     enum ListChrome {
         case main
         case searchSession
@@ -363,7 +365,7 @@ struct DefectListView: View {
     private var mainChromeStack: some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(alignment: .leading, spacing: 0) {
-                obsidianModuleHeader(title: "缺失紀錄")
+                ObsidianModuleHeaderView(title: "缺失紀錄")
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     .padding(.bottom, 12)
@@ -435,22 +437,22 @@ struct DefectListView: View {
         if model.isLoading && showEmptyPlaceholder {
             Spacer()
             ProgressView("載入中…")
-                .tint(TacticalGlassTheme.primary)
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .tint(theme.primary)
+                .foregroundStyle(theme.mutedLabel)
                 .frame(maxWidth: .infinity)
             Spacer()
         } else if let err = model.errorMessage, showEmptyPlaceholder {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                     Text("無法載入列表")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.onSurface)
                 }
                 Text(err)
                     .font(.caption)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("重試") {
                     Task { await model.load(projectId: projectId, session: session) }
@@ -461,11 +463,11 @@ struct DefectListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                    .fill(theme.surfaceContainer.opacity(0.95))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                    .strokeBorder(TacticalGlassTheme.tertiary.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(theme.tertiary.opacity(0.35), lineWidth: 1)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 8)
@@ -474,10 +476,10 @@ struct DefectListView: View {
             VStack(spacing: 8) {
                 Image(systemName: "tray")
                     .font(.title2)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                 Text(model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "尚無缺失紀錄" : "查無符合的紀錄")
                     .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
@@ -506,7 +508,7 @@ struct DefectListView: View {
                         } label: {
                             Label("編輯", systemImage: "pencil")
                         }
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(theme.primary)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
@@ -523,7 +525,7 @@ struct DefectListView: View {
                         HStack {
                             if model.isLoadingMore {
                                 ProgressView()
-                                    .tint(TacticalGlassTheme.primary)
+                                    .tint(theme.primary)
                             }
                             Text(model.isLoadingMore ? "載入中…" : "載入更多")
                                 .font(.subheadline.weight(.semibold))
@@ -532,7 +534,7 @@ struct DefectListView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                     .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -556,20 +558,20 @@ struct DefectListView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(rec.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.onSurface)
                     .lineLimit(3)
                 Spacer(minLength: 8)
                 Text("待上傳")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(TacticalGlassTheme.primary.opacity(0.15))
+                    .background(theme.primary.opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             Text("連線後將建立於伺服器；可先新增執行紀錄並一併上傳。")
                 .font(.caption)
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
                 pendingRecordSheetParent = PendingDefectParentTarget(id: rec.id)
@@ -583,11 +585,11 @@ struct DefectListView: View {
         .padding(14)
         .background {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .fill(TacticalGlassTheme.surfaceContainer.opacity(0.95))
+                .fill(theme.surfaceContainer.opacity(0.95))
         }
         .overlay {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                .strokeBorder(TacticalGlassTheme.primary.opacity(0.25), lineWidth: 1)
+                .strokeBorder(theme.primary.opacity(0.25), lineWidth: 1)
         }
     }
 
@@ -606,24 +608,24 @@ struct DefectListView: View {
                                 Capsule()
                                     .fill(
                                         model.statusFilter == filter
-                                            ? TacticalGlassTheme.primary.opacity(0.22)
-                                            : TacticalGlassTheme.surfaceContainerHighest.opacity(0.75)
+                                            ? theme.primary.opacity(0.22)
+                                            : theme.surfaceContainerHighest.opacity(0.75)
                                     )
                             }
                             .overlay {
                                 Capsule()
                                     .strokeBorder(
                                         model.statusFilter == filter
-                                            ? TacticalGlassTheme.primary.opacity(0.55)
-                                            : TacticalGlassTheme.ghostBorder,
+                                            ? theme.primary.opacity(0.55)
+                                            : theme.ghostBorder,
                                         lineWidth: 1
                                     )
                             }
                     }
                     .foregroundStyle(
                         model.statusFilter == filter
-                            ? TacticalGlassTheme.primary
-                            : TacticalGlassTheme.mutedLabel
+                            ? theme.primary
+                            : theme.mutedLabel
                     )
                     .buttonStyle(.plain)
                 }
@@ -638,7 +640,7 @@ struct DefectListView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(locationLine(floor: item.floor, location: item.location))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .tracking(0.8)
                 Spacer(minLength: 8)
                 defectStatusBadge(item.status)
@@ -646,7 +648,7 @@ struct DefectListView: View {
 
             Text(item.description)
                 .font(.headline.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(theme.onSurface)
                 .lineLimit(3)
                 .multilineTextAlignment(.leading)
 
@@ -654,16 +656,16 @@ struct DefectListView: View {
                 priorityChip(item.priority)
                 Text("發現人：\(item.discoveredBy)")
                     .font(.caption)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
             }
 
             if urgent {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(TacticalGlassTheme.statusDanger)
+                        .foregroundStyle(theme.statusDanger)
                     Text("需緊急關注")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(TacticalGlassTheme.statusDanger)
+                        .foregroundStyle(theme.statusDanger)
                 }
                 .padding(.top, 2)
             }
@@ -671,14 +673,14 @@ struct DefectListView: View {
             HStack {
                 Text("ID \(item.id.prefix(8).uppercased())")
                     .font(.tacticalMonoFixed(size: 11, weight: .medium))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                 Spacer()
                 Text("詳情")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(TacticalGlassTheme.primary.opacity(0.8))
+                    .foregroundStyle(theme.primary.opacity(0.8))
             }
             .padding(.top, 4)
         }
@@ -688,8 +690,8 @@ struct DefectListView: View {
             RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
                 .fill(
                     urgent
-                        ? TacticalGlassTheme.surfaceContainerHighest
-                        : TacticalGlassTheme.surfaceContainer
+                        ? theme.surfaceContainerHighest
+                        : theme.surfaceContainer
                 )
         }
     }
@@ -712,9 +714,9 @@ struct DefectListView: View {
     private func defectStatusBadge(_ status: String) -> some View {
         let (text, color): (String, Color) = {
             switch status {
-            case "completed": ("已完成", TacticalGlassTheme.statusSuccess)
-            case "in_progress": ("進行中", TacticalGlassTheme.primary)
-            default: (status, TacticalGlassTheme.mutedLabel)
+            case "completed": ("已完成", theme.statusSuccess)
+            case "in_progress": ("進行中", theme.primary)
+            default: (status, theme.mutedLabel)
             }
         }()
         return Text(text)
@@ -733,7 +735,7 @@ struct DefectListView: View {
             default: return "中"
             }
         }()
-        let color: Color = priority == "high" ? TacticalGlassTheme.statusDanger : TacticalGlassTheme.mutedLabel
+        let color: Color = priority == "high" ? theme.statusDanger : theme.mutedLabel
         return Text(text)
             .font(.caption2.weight(.bold))
             .padding(.horizontal, 8)
@@ -744,6 +746,8 @@ struct DefectListView: View {
 }
 
 private struct DefectListSearchSessionView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     let projectId: String
     @Bindable var model: DefectListViewModel
@@ -759,14 +763,14 @@ private struct DefectListSearchSessionView: View {
         .navigationBarBackButtonHidden(true)
         .navigationTitle("搜尋缺失")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") {
                     dismiss()
                 }
-                .foregroundStyle(TacticalGlassTheme.primary)
+                .foregroundStyle(theme.primary)
             }
         }
     }
@@ -827,6 +831,8 @@ private enum DefectDetailPrimaryTab: String, CaseIterable {
 }
 
 struct DefectDetailView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let defectId: String
     let accessToken: String
@@ -844,8 +850,8 @@ struct DefectDetailView: View {
                 if model.isLoading && model.defect == nil {
                     Spacer(minLength: 0)
                     ProgressView("載入中…")
-                        .tint(TacticalGlassTheme.primary)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .tint(theme.primary)
+                        .foregroundStyle(theme.mutedLabel)
                         .frame(maxWidth: .infinity)
                     Spacer(minLength: 0)
                 } else if let err = model.errorMessage, model.defect == nil {
@@ -862,7 +868,7 @@ struct DefectDetailView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .tint(TacticalGlassTheme.primary)
+                        .tint(theme.primary)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -910,16 +916,16 @@ struct DefectDetailView: View {
                 .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
             }
         }
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .navigationTitle("缺失詳情")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             if primaryTab == .detail, model.defect != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("編輯") { showEditDefect = true }
-                        .foregroundStyle(TacticalGlassTheme.primary)
+                        .foregroundStyle(theme.primary)
                 }
             }
         }
@@ -978,10 +984,10 @@ struct DefectDetailView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("尚無紀錄")
                             .font(.subheadline)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         Text("點右下角 ＋ 新增執行紀錄（可附照片）。")
                             .font(.footnote)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                            .foregroundStyle(theme.mutedLabel.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1002,7 +1008,7 @@ struct DefectDetailView: View {
                                 } label: {
                                     Label("編輯", systemImage: "pencil")
                                 }
-                                .tint(TacticalGlassTheme.primary)
+                                .tint(theme.primary)
                             }
                     }
                 }
@@ -1020,7 +1026,7 @@ struct DefectDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("#\(d.id.prefix(8).uppercased())")
                     .font(.tacticalMonoFixed(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.onSurface)
                 Text(defectStatusText(d.status))
                     .font(.caption2.weight(.bold))
                     .padding(.horizontal, 10)
@@ -1028,14 +1034,14 @@ struct DefectDetailView: View {
                     .background(
                         Capsule().fill(
                             d.status == "completed"
-                                ? TacticalGlassTheme.statusSuccess.opacity(0.2)
-                                : TacticalGlassTheme.primary.opacity(0.2)
+                                ? theme.statusSuccess.opacity(0.2)
+                                : theme.primary.opacity(0.2)
                         )
                     )
                     .foregroundStyle(
                         d.status == "completed"
-                            ? TacticalGlassTheme.statusSuccess
-                            : TacticalGlassTheme.primary
+                            ? theme.statusSuccess
+                            : theme.primary
                     )
             }
             Spacer()
@@ -1059,11 +1065,11 @@ struct DefectDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("問題說明")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
                     .tracking(1)
                 Text(d.description)
                     .font(.body)
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(theme.onSurface.opacity(0.92))
                     .lineSpacing(4)
             }
         }
@@ -1077,21 +1083,21 @@ struct DefectDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("現場照片")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(1)
 
             if photos.isEmpty {
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.title3)
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.65))
+                        .foregroundStyle(theme.mutedLabel.opacity(0.65))
                     VStack(alignment: .leading, spacing: 4) {
                         Text("尚未上傳照片")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         Text("建立缺失時可於「現場照片」上傳；若已在網頁版加入，請下拉重新整理。")
                             .font(.caption)
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel.opacity(0.85))
+                            .foregroundStyle(theme.mutedLabel.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1099,7 +1105,7 @@ struct DefectDetailView: View {
                 .padding(14)
                 .background {
                     RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
-                        .fill(TacticalGlassTheme.surfaceContainerLowest.opacity(0.65))
+                        .fill(theme.surfaceContainerLowest.opacity(0.65))
                 }
             } else {
                 TacticalPhotoAlbumGrid(photos: photos, columnCount: 3, spacing: 10)
@@ -1127,16 +1133,16 @@ struct DefectDetailView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                .foregroundStyle(theme.mutedLabel)
                 .tracking(0.6)
             if mono {
                 Text(value)
                     .font(.tacticalMonoFixed(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(theme.onSurface.opacity(0.9))
             } else {
                 Text(value)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(theme.onSurface.opacity(0.9))
             }
         }
     }
@@ -1148,16 +1154,16 @@ struct DefectDetailView: View {
                     if let by = rec.recordedBy {
                         Text(by.name ?? by.email)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.onSurface)
                     }
                     Spacer()
                     Text(rec.createdAt.formattedAsAppDateTime)
                         .font(.tacticalMonoFixed(size: 11, weight: .medium))
-                        .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                        .foregroundStyle(theme.mutedLabel)
                 }
                 Text(rec.content)
                     .font(.subheadline)
-                    .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                    .foregroundStyle(theme.mutedLabel)
 
                 let pics = rec.photos ?? []
                 if !pics.isEmpty {
@@ -1403,6 +1409,8 @@ final class DefectRecordCreateViewModel {
 }
 
 struct DefectRecordCreateView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let defectId: String?
     let pendingDefectOutboxParentId: UUID?
@@ -1438,7 +1446,7 @@ struct DefectRecordCreateView: View {
                 if let err = model.errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -1446,16 +1454,16 @@ struct DefectRecordCreateView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("執行紀錄內容".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(1.2)
                             TextField("", text: $model.contentText, axis: .vertical)
                                 .font(.subheadline)
                                 .lineLimit(6 ... 14)
                                 .textInputAutocapitalization(.sentences)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(theme.onSurface)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.28))
+                                .fill(theme.primary.opacity(0.28))
                                 .frame(height: 1)
                         }
                     }
@@ -1465,7 +1473,7 @@ struct DefectRecordCreateView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                             .tracking(0.8)
                         FieldFormPhotoStrip(
                             remotePhotoIds: [],
@@ -1483,7 +1491,7 @@ struct DefectRecordCreateView: View {
                         if model.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(model.photoPickerItems.count + model.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -1508,7 +1516,7 @@ struct DefectRecordCreateView: View {
                 } label: {
                     if createModel.isSubmitting {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("送出紀錄")
                     }
@@ -1519,7 +1527,7 @@ struct DefectRecordCreateView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onChange(of: model.photoPickerFingerprint) { _, _ in
             Task { await model.refreshPhotoPreviews() }
         }
@@ -1531,12 +1539,12 @@ struct DefectRecordCreateView: View {
         }
         .navigationTitle(pendingDefectOutboxParentId != nil ? "新增紀錄（待同步缺失）" : "新增執行紀錄")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
             }
         }
     }
@@ -1696,6 +1704,8 @@ final class DefectEditViewModel {
 }
 
 struct DefectEditView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let defectId: String
     let accessToken: String
@@ -1713,7 +1723,7 @@ struct DefectEditView: View {
                 if let err = vm.errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -1721,15 +1731,15 @@ struct DefectEditView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("問題說明".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             TextField("", text: $edit.descriptionText, axis: .vertical)
                                 .font(.subheadline)
                                 .lineLimit(4 ... 12)
                                 .textInputAutocapitalization(.sentences)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(theme.onSurface)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.25))
+                                .fill(theme.primary.opacity(0.25))
                                 .frame(height: 1)
                         }
 
@@ -1738,14 +1748,14 @@ struct DefectEditView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("優先度".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             Picker("", selection: $edit.priority) {
                                 Text("低").tag("low")
                                 Text("中").tag("medium")
                                 Text("高").tag("high")
                             }
                             .pickerStyle(.segmented)
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                         }
 
                         TacticalTextField(title: "樓層（選填）", text: $edit.floor)
@@ -1754,13 +1764,13 @@ struct DefectEditView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("狀態".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             Picker("", selection: $edit.status) {
                                 Text("進行中").tag("in_progress")
                                 Text("已完成").tag("completed")
                             }
                             .pickerStyle(.segmented)
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                         }
                     }
                 }
@@ -1769,7 +1779,7 @@ struct DefectEditView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("現場照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         FieldFormPhotoStrip(
                             remotePhotoIds: edit.committedPhotoIds,
                             localPreviewImages: edit.mergedLocalPhotoPreviews,
@@ -1786,7 +1796,7 @@ struct DefectEditView: View {
                         if edit.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(edit.committedPhotoIds.count + edit.photoPickerItems.count + edit.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -1805,7 +1815,7 @@ struct DefectEditView: View {
                 } label: {
                     if vm.isSaving {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("儲存變更")
                     }
@@ -1816,7 +1826,7 @@ struct DefectEditView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onChange(of: edit.photoPickerFingerprint) { _, _ in
             Task { await edit.refreshPhotoPreviews() }
         }
@@ -1828,12 +1838,12 @@ struct DefectEditView: View {
         }
         .navigationTitle("編輯缺失")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
             }
         }
         .task {
@@ -1855,6 +1865,8 @@ struct DefectEditView: View {
 }
 
 struct DefectRecordEditView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let defectId: String
     let record: DefectExecutionRecordDTO
@@ -1914,7 +1926,7 @@ struct DefectRecordEditView: View {
                 if let err = errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -1922,15 +1934,15 @@ struct DefectRecordEditView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("執行紀錄內容".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                             TextField("", text: $contentText, axis: .vertical)
                                 .font(.subheadline)
                                 .lineLimit(6 ... 18)
                                 .textInputAutocapitalization(.sentences)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(theme.onSurface)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.28))
+                                .fill(theme.primary.opacity(0.28))
                                 .frame(height: 1)
                         }
                     }
@@ -1940,7 +1952,7 @@ struct DefectRecordEditView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                         FieldFormPhotoStrip(
                             remotePhotoIds: committedPhotoIds,
                             localPreviewImages: mergedLocalPhotoPreviews,
@@ -1957,7 +1969,7 @@ struct DefectRecordEditView: View {
                         if remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(committedPhotoIds.count + photoPickerItems.count + cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -1972,7 +1984,7 @@ struct DefectRecordEditView: View {
                 } label: {
                     if isSaving {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("儲存")
                     }
@@ -1983,7 +1995,7 @@ struct DefectRecordEditView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onAppear {
             contentText = record.content
             committedPhotoIds = record.photos?.map(\.id) ?? []
@@ -2001,12 +2013,12 @@ struct DefectRecordEditView: View {
         }
         .navigationTitle("編輯執行紀錄")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
             }
         }
     }
@@ -2288,6 +2300,8 @@ final class DefectCreateViewModel {
 }
 
 struct DefectCreateView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
     let projectId: String
     let accessToken: String
     var onFinished: () async -> Void
@@ -2305,7 +2319,7 @@ struct DefectCreateView: View {
                 if let err = vm.errorMessage {
                     Text(err)
                         .font(.subheadline)
-                        .foregroundStyle(TacticalGlassTheme.tertiary)
+                        .foregroundStyle(theme.tertiary)
                 }
 
                 TacticalGlassCard {
@@ -2313,16 +2327,16 @@ struct DefectCreateView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("問題說明".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(1.2)
                             TextField("", text: $vm.descriptionText, axis: .vertical)
                                 .font(.subheadline)
                                 .lineLimit(4 ... 10)
                                 .textInputAutocapitalization(.sentences)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(theme.onSurface)
                                 .padding(.vertical, 4)
                             Rectangle()
-                                .fill(TacticalGlassTheme.primary.opacity(0.25))
+                                .fill(theme.primary.opacity(0.25))
                                 .frame(height: 1)
                         }
 
@@ -2331,7 +2345,7 @@ struct DefectCreateView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("優先度".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(1.2)
                             Picker("", selection: $vm.priority) {
                                 Text("低").tag("low")
@@ -2339,7 +2353,7 @@ struct DefectCreateView: View {
                                 Text("高").tag("high")
                             }
                             .pickerStyle(.segmented)
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                         }
 
                         TacticalTextField(title: "樓層（選填）", text: $vm.floor)
@@ -2348,14 +2362,14 @@ struct DefectCreateView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("狀態".uppercased())
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                                 .tracking(1.2)
                             Picker("", selection: $vm.status) {
                                 Text("進行中").tag("in_progress")
                                 Text("已完成").tag("completed")
                             }
                             .pickerStyle(.segmented)
-                            .tint(TacticalGlassTheme.primary)
+                            .tint(theme.primary)
                         }
                     }
                 }
@@ -2364,7 +2378,7 @@ struct DefectCreateView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("現場照片（選填）")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                            .foregroundStyle(theme.mutedLabel)
                             .tracking(0.8)
                         FieldFormPhotoStrip(
                             remotePhotoIds: [],
@@ -2382,7 +2396,7 @@ struct DefectCreateView: View {
                         if vm.remainingPhotoSlots <= 0 {
                             Text("照片已達 30 張上限")
                                 .font(.caption)
-                                .foregroundStyle(TacticalGlassTheme.mutedLabel)
+                                .foregroundStyle(theme.mutedLabel)
                         }
                         Text("照片 \(vm.photoPickerItems.count + vm.cameraPhotoJPEGs.count)／30")
                             .font(.tacticalMonoFixed(size: 12, weight: .medium))
@@ -2401,7 +2415,7 @@ struct DefectCreateView: View {
                 } label: {
                     if createModel.isSubmitting {
                         ProgressView()
-                            .tint(TacticalGlassTheme.onPrimary)
+                            .tint(theme.onPrimary)
                     } else {
                         Text("送出")
                     }
@@ -2412,7 +2426,7 @@ struct DefectCreateView: View {
             .padding(20)
         }
         .scrollDismissesKeyboard(.immediately)
-        .background(TacticalGlassTheme.surface)
+        .background(theme.surface)
         .onChange(of: vm.photoPickerFingerprint) { _, _ in
             Task { await vm.refreshPhotoPreviews() }
         }
@@ -2424,23 +2438,15 @@ struct DefectCreateView: View {
         }
         .navigationTitle("新增紀錄")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(TacticalGlassTheme.surfaceContainerLow, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
-                    .foregroundStyle(TacticalGlassTheme.primary)
+                    .foregroundStyle(theme.primary)
             }
         }
     }
-}
-
-// MARK: - Shared header (SITE_OPS-style)
-
-func obsidianModuleHeader(title: String) -> some View {
-    Text(title)
-        .tacticalTitle(28, weight: .bold)
-        .foregroundStyle(.white)
 }
 
 private extension String {
