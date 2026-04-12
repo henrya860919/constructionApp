@@ -435,17 +435,20 @@ struct ConstructionDailyLogEditView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.fieldTheme) private var theme
     @Environment(\.dismiss) private var dismiss
+    @Environment(SessionManager.self) private var session
     let projectId: String
     let date: Date
     @Bindable var store: FieldDailyLogLocalStore
 
     @State private var weatherSelection: FieldDailyLogWeather?
     @State private var workItems: [FieldDailyLogWorkItem] = []
+    @State private var materials: [FieldDailyLogMaterialRow] = []
+    @State private var materialPriorsByResourceId: [String: String] = [:]
+    @State private var personnelRows: [FieldDailyLogPersonnelEquipmentRow] = []
+    @State private var personnelPriorsByResourceId: [String: String] = [:]
     @State private var notesText = ""
     @State private var savePulse = false
     @FocusState private var isNotesFocused: Bool
-    /// 避免從「選工項」返回時 `onAppear` 再次 `syncFromStore` 蓋掉剛寫入的 `@State`。
-    @State private var didSyncFromStoreOnce = false
     @State private var showLeaveWithoutSaveConfirmation = false
 
     private var normalizedDate: Date { FieldDailyLogCalendar.startOfDay(date) }
@@ -466,6 +469,16 @@ struct ConstructionDailyLogEditView: View {
         )
     }
 
+    private var materialsDraftBinding: Binding<[FieldDailyLogMaterialRow]> {
+        Binding(
+            get: { materials },
+            set: { newValue in
+                materials = newValue
+                pushDraft()
+            }
+        )
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -478,6 +491,8 @@ struct ConstructionDailyLogEditView: View {
 
                 editWeatherSection
                 editWorkItemsSection
+                editMaterialsSection
+                editPersonnelSection
                 editNotesSection
 
                 if isDirty {
@@ -535,14 +550,17 @@ struct ConstructionDailyLogEditView: View {
         .background(DailyLogEditInteractivePopGate(allowsInteractivePop: !isDirty))
         .onAppear {
             store.activateProject(projectId)
-            if !didSyncFromStoreOnce {
-                syncFromStore()
-                didSyncFromStoreOnce = true
-            }
         }
         .onChange(of: dayKey) { _, _ in
-            // 同一編輯實例若換日（少見）須重載；從選工項返回時 dayKey 不變，不會覆蓋剛選的列。
             syncFromStore()
+        }
+        /// 初次進入與換日時自磁碟載入草稿並向後端同步 defaults（人機／材料）；從「選工項」等子頁返回時不重跑，避免覆蓋 `@State`。
+        .task(id: dayKey) {
+            await MainActor.run {
+                store.activateProject(projectId)
+                syncFromStore()
+            }
+            await refreshConstructionDailyLogDefaultsFromAPI()
         }
         .animation(.easeOut(duration: 0.22), value: isDirty)
         .sensoryFeedback(.success, trigger: savePulse)
@@ -646,7 +664,7 @@ struct ConstructionDailyLogEditView: View {
 
             if workItems.isEmpty {
                 Text(
-                    "尚未加入工項。點「選擇工項」載入與網頁相同的核定 PCCES 明細（僅可選結構末層），再回到此處填寫本日完成量。"
+                    "尚未加入工項，新增完工項後再回到此處填寫本日完成量。"
                 )
                 .font(.footnote)
                 .foregroundStyle(theme.mutedLabel.opacity(0.85))
@@ -727,6 +745,628 @@ struct ConstructionDailyLogEditView: View {
         }
     }
 
+    private var editMaterialsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("材料")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.mutedLabel)
+                .tracking(1.1)
+
+            NavigationLink {
+                ConstructionDailyLogMaterialResourcesPickerView(
+                    projectId: projectId,
+                    logDate: dayKey,
+                    materials: materialsDraftBinding
+                )
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "cube.box")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.primary)
+                    Text("選擇材料")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.onSurface)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.mutedLabel.opacity(0.75))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 13)
+                .background {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .fill(theme.surfaceContainerHighest.opacity(0.88))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .strokeBorder(theme.ghostBorder, lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if materials.isEmpty {
+                Text("尚未加入材料。請從資源庫選擇，或點下方新增手填列後在此填寫本日使用量。")
+                    .font(.footnote)
+                    .foregroundStyle(theme.mutedLabel.opacity(0.85))
+                    .padding(.top, 2)
+            }
+
+            ForEach(Array(materials.enumerated()), id: \.element.id) { index, row in
+                materialRowEditor(index: index, row: row)
+            }
+
+            Button {
+                dismissKeyboard()
+                materials.append(FieldDailyLogMaterialRow.emptyManual())
+                pushDraft()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                    Text("新增手填列")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(theme.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .strokeBorder(theme.primary.opacity(0.35), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private func materialRowEditor(index: Int, row: FieldDailyLogMaterialRow) -> some View {
+        let isResource = row.projectResourceId != nil
+        VStack(alignment: .leading, spacing: 10) {
+            if isResource {
+                HStack(alignment: .top, spacing: 10) {
+                    Text("材料")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(theme.mutedLabel)
+                        .frame(width: 36, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.materialName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "—" : row.materialName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.onSurface)
+                        Text("單位：\(row.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "—" : row.unit)")
+                            .font(.caption)
+                            .foregroundStyle(theme.mutedLabel)
+                    }
+                    Spacer(minLength: 0)
+                    Button {
+                        materials.remove(at: index)
+                        pushDraft()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(theme.statusDanger)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("移除此列")
+                }
+            }
+
+            if isResource {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("本日使用")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(theme.mutedLabel)
+                        TextField("0", text: materialDailyUsedBinding(index: index))
+                            .font(.body)
+                            .foregroundStyle(theme.onSurface)
+                            .keyboardType(.decimalPad)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background {
+                                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                    .fill(theme.surfaceContainerLowest.opacity(0.95))
+                            }
+                            .overlay {
+                                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                    .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                            }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("累計使用")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(theme.mutedLabel)
+                        Text(materials[index].accumulatedQty)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(theme.onSurface)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background {
+                                RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                    .fill(theme.surfaceContainerLow.opacity(0.5))
+                            }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("備註")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(theme.mutedLabel)
+                    TextField("選填", text: materialRemarkBinding(index: index))
+                        .font(.body)
+                        .foregroundStyle(theme.onSurface)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .fill(theme.surfaceContainerLowest.opacity(0.95))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                        }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    labeledPersonnelField(title: "材料名稱", text: materialNameBinding(index: index))
+                    HStack(spacing: 10) {
+                        labeledPersonnelField(title: "單位", text: materialUnitBinding(index: index))
+                        labeledPersonnelField(title: "契約數量", text: materialContractQtyBinding(index: index), kind: .decimal)
+                    }
+                    HStack(spacing: 10) {
+                        labeledPersonnelField(title: "本日使用", text: materialDailyUsedBinding(index: index), kind: .decimal)
+                        labeledPersonnelField(title: "累計使用", text: materialAccumulatedBinding(index: index), kind: .decimal)
+                    }
+                    labeledPersonnelField(title: "備註", text: materialRemarkBinding(index: index))
+                    Button {
+                        materials.remove(at: index)
+                        pushDraft()
+                    } label: {
+                        Label("移除此列", systemImage: "trash")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(theme.statusDanger)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                .fill(theme.surfaceContainerLow.opacity(0.6))
+        }
+    }
+
+    private func materialNameBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { materials[index].materialName },
+            set: {
+                materials[index].materialName = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func materialUnitBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { materials[index].unit },
+            set: {
+                materials[index].unit = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func materialContractQtyBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { materials[index].contractQty },
+            set: {
+                materials[index].contractQty = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func materialDailyUsedBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { materials[index].dailyUsedQty },
+            set: {
+                materials[index].dailyUsedQty = $0
+                recalcMaterialAccumulated(at: index)
+                pushDraft()
+            }
+        )
+    }
+
+    private func materialAccumulatedBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { materials[index].accumulatedQty },
+            set: {
+                materials[index].accumulatedQty = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func materialRemarkBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { materials[index].remark },
+            set: {
+                materials[index].remark = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func recalcMaterialAccumulated(at index: Int) {
+        guard materials.indices.contains(index) else { return }
+        guard let rid = materials[index].projectResourceId, !rid.isEmpty else { return }
+        let prior = materialPriorsByResourceId[rid] ?? "0"
+        let p = FieldDailyLogPersonnelReconcile.parseDecimalString(prior)
+        let d = FieldDailyLogPersonnelReconcile.parseDecimalString(materials[index].dailyUsedQty)
+        materials[index].accumulatedQty = FieldDailyLogPersonnelReconcile.formatDecimal(p + d)
+    }
+
+    private var editPersonnelSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("人員及機具")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.mutedLabel)
+                .tracking(1.1)
+
+            if personnelRows.isEmpty {
+                Text("尚無列。請確認已登入且專案資源庫已建人力／機具，或點下方新增手填列。")
+                    .font(.footnote)
+                    .foregroundStyle(theme.mutedLabel.opacity(0.85))
+                    .padding(.top, 2)
+            }
+
+            ForEach(Array(personnelRows.enumerated()), id: \.element.id) { index, row in
+                personnelRowEditor(index: index, row: row)
+            }
+
+            Button {
+                dismissKeyboard()
+                personnelRows.append(FieldDailyLogPersonnelEquipmentRow.emptyManualRow())
+                pushDraft()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                    Text("新增手填列")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .foregroundStyle(theme.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .strokeBorder(theme.primary.opacity(0.35), lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private func personnelRowEditor(index: Int, row: FieldDailyLogPersonnelEquipmentRow) -> some View {
+        let isBoundResource = row.projectResourceId != nil && row.resourceType != nil
+        VStack(alignment: .leading, spacing: 10) {
+            if isBoundResource {
+                HStack(alignment: .top, spacing: 10) {
+                    Text(row.resourceType == "equipment" ? "機具" : "人力")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(theme.mutedLabel)
+                        .frame(width: 36, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.resourceType == "equipment" ? (row.equipmentName.isEmpty ? "—" : row.equipmentName) : (row.workType.isEmpty ? "—" : row.workType))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.onSurface)
+                        Text("單位：\(row.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "—" : row.unit)")
+                            .font(.caption)
+                            .foregroundStyle(theme.mutedLabel)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                if row.resourceType == "labor" {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("本日人數")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(theme.mutedLabel)
+                            TextField("0", text: personnelDailyWorkersBinding(index: index))
+                                .font(.body)
+                                .foregroundStyle(theme.onSurface)
+                                .keyboardType(.numberPad)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .fill(theme.surfaceContainerLowest.opacity(0.95))
+                                }
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                                }
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("累計")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(theme.mutedLabel)
+                            Text(personnelRows[index].accumulatedWorkers)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(theme.onSurface)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .fill(theme.surfaceContainerLow.opacity(0.5))
+                                }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("本日數量")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(theme.mutedLabel)
+                            TextField("0", text: personnelDailyEquipmentBinding(index: index))
+                                .font(.body)
+                                .foregroundStyle(theme.onSurface)
+                                .keyboardType(.decimalPad)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .fill(theme.surfaceContainerLowest.opacity(0.95))
+                                }
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                                }
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("累計")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(theme.mutedLabel)
+                            Text(personnelRows[index].accumulatedEquipmentQty)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(theme.onSurface)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .fill(theme.surfaceContainerLow.opacity(0.5))
+                                }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    labeledPersonnelField(title: "工別", text: personnelWorkTypeBinding(index: index))
+                    HStack(spacing: 10) {
+                        labeledPersonnelField(title: "本日人數", text: personnelDailyWorkersBinding(index: index), kind: .int)
+                        labeledPersonnelField(title: "累計人數", text: personnelAccumulatedWorkersBinding(index: index), kind: .int)
+                    }
+                    labeledPersonnelField(title: "機具名稱", text: personnelEquipmentNameBinding(index: index))
+                    HStack(spacing: 10) {
+                        labeledPersonnelField(title: "本日機具量", text: personnelDailyEquipmentBinding(index: index), kind: .decimal)
+                        labeledPersonnelField(title: "累計機具量", text: personnelAccumulatedEquipmentBinding(index: index), kind: .decimal)
+                    }
+                    Button {
+                        personnelRows.remove(at: index)
+                        pushDraft()
+                    } label: {
+                        Label("移除此列", systemImage: "trash")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(theme.statusDanger)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                .fill(theme.surfaceContainerLow.opacity(0.6))
+        }
+    }
+
+    private enum PersonnelFieldKeyboardKind {
+        case text
+        case int
+        case decimal
+    }
+
+    @ViewBuilder
+    private func labeledPersonnelField(
+        title: String,
+        text: Binding<String>,
+        kind: PersonnelFieldKeyboardKind = .text
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.mutedLabel)
+            switch kind {
+            case .text:
+                TextField("—", text: text)
+                    .font(.body)
+                    .foregroundStyle(theme.onSurface)
+                    .keyboardType(.default)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .fill(theme.surfaceContainerLowest.opacity(0.95))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                    }
+            case .int:
+                TextField("—", text: text)
+                    .font(.body)
+                    .foregroundStyle(theme.onSurface)
+                    .keyboardType(.numberPad)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .fill(theme.surfaceContainerLowest.opacity(0.95))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                    }
+            case .decimal:
+                TextField("—", text: text)
+                    .font(.body)
+                    .foregroundStyle(theme.onSurface)
+                    .keyboardType(.decimalPad)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .fill(theme.surfaceContainerLowest.opacity(0.95))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                            .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                    }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func personnelWorkTypeBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { personnelRows[index].workType },
+            set: {
+                personnelRows[index].workType = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func personnelDailyWorkersBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { personnelRows[index].dailyWorkers },
+            set: {
+                personnelRows[index].dailyWorkers = $0
+                recalcPersonnelAccumulated(at: index)
+                pushDraft()
+            }
+        )
+    }
+
+    private func personnelAccumulatedWorkersBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { personnelRows[index].accumulatedWorkers },
+            set: {
+                personnelRows[index].accumulatedWorkers = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func personnelEquipmentNameBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { personnelRows[index].equipmentName },
+            set: {
+                personnelRows[index].equipmentName = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func personnelDailyEquipmentBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { personnelRows[index].dailyEquipmentQty },
+            set: {
+                personnelRows[index].dailyEquipmentQty = $0
+                recalcPersonnelAccumulated(at: index)
+                pushDraft()
+            }
+        )
+    }
+
+    private func personnelAccumulatedEquipmentBinding(index: Int) -> Binding<String> {
+        Binding(
+            get: { personnelRows[index].accumulatedEquipmentQty },
+            set: {
+                personnelRows[index].accumulatedEquipmentQty = $0
+                pushDraft()
+            }
+        )
+    }
+
+    private func recalcPersonnelAccumulated(at index: Int) {
+        guard personnelRows.indices.contains(index) else { return }
+        let row = personnelRows[index]
+        guard let rid = row.projectResourceId, let rt = row.resourceType, !rid.isEmpty else { return }
+        let prior = personnelPriorsByResourceId[rid] ?? "0"
+        if rt == "labor" {
+            let p = FieldDailyLogPersonnelReconcile.parseIntString(prior)
+            let d = FieldDailyLogPersonnelReconcile.parseIntString(row.dailyWorkers)
+            personnelRows[index].accumulatedWorkers = String(p + d)
+        } else {
+            let p = FieldDailyLogPersonnelReconcile.parseDecimalString(prior)
+            let d = FieldDailyLogPersonnelReconcile.parseDecimalString(row.dailyEquipmentQty)
+            personnelRows[index].accumulatedEquipmentQty = FieldDailyLogPersonnelReconcile.formatDecimal(p + d)
+        }
+    }
+
+    private func refreshConstructionDailyLogDefaultsFromAPI() async {
+        guard session.isAuthenticated else { return }
+        do {
+            let defs = try await session.withValidAccessToken { token in
+                try await APIService.fetchConstructionDailyLogFormDefaults(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    logDate: dayKey,
+                    excludeLogId: nil
+                )
+            }
+            await MainActor.run {
+                personnelPriorsByResourceId = defs.personnelResourcePriors
+                personnelRows = FieldDailyLogPersonnelReconcile.reconcile(
+                    resources: defs.personnelResources,
+                    saved: personnelRows,
+                    priors: defs.personnelResourcePriors
+                )
+                materialPriorsByResourceId = defs.materialResourcePriors
+                var nextMaterials = FieldDailyLogMaterialReconcile.mergeSaved(
+                    resources: defs.materialResources,
+                    saved: materials,
+                    priors: defs.materialResourcePriors
+                )
+                FieldDailyLogMaterialReconcile.recalcAccumulatedFromPriors(
+                    &nextMaterials,
+                    priors: defs.materialResourcePriors
+                )
+                materials = nextMaterials
+                pushDraft()
+            }
+        } catch {
+            // 離線或權限失敗時保留本地草稿列，不阻擋編輯。
+        }
+    }
+
     private var editNotesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("重要事項")
@@ -775,10 +1415,18 @@ struct ConstructionDailyLogEditView: View {
         }
         notesText = persisted.notes
         workItems = persisted.workItems
+        materials = persisted.materials
+        personnelRows = persisted.personnelRows
     }
 
     private func persistedFromUI() -> FieldDailyLogPersistedDay {
-        FieldDailyLogPersistedDay(weatherRaw: weatherSelection?.rawValue, notes: notesText, workItems: workItems)
+        FieldDailyLogPersistedDay(
+            weatherRaw: weatherSelection?.rawValue,
+            notes: notesText,
+            workItems: workItems,
+            materials: materials,
+            personnelRows: personnelRows
+        )
     }
 
     private func pushDraft() {

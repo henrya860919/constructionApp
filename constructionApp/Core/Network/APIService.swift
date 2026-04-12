@@ -616,6 +616,33 @@ enum APIService {
         ).data
     }
 
+    /// 施工日誌表單預設（含資源庫人力／機具與填表日前合計），與網頁 `getConstructionDailyLogDefaults` 相同。
+    static func fetchConstructionDailyLogFormDefaults(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        logDate: String,
+        excludeLogId: String? = nil
+    ) async throws -> ConstructionDailyLogFormDefaultsDTO {
+        let pathBase = baseURL
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("construction-daily-logs")
+            .appendingPathComponent("defaults")
+        var components = URLComponents(url: pathBase, resolvingAgainstBaseURL: false)!
+        var items = [URLQueryItem(name: "logDate", value: logDate)]
+        if let excludeLogId, !excludeLogId.isEmpty {
+            items.append(URLQueryItem(name: "excludeLogId", value: excludeLogId))
+        }
+        components.queryItems = items
+        guard let url = components.url else { throw APIRequestError.invalidURL }
+        return try await authorizedGET(
+            ConstructionDailyLogFormDefaultsEnvelope.self,
+            url: url,
+            token: token
+        ).data
+    }
+
     // MARK: - 圖說 drawing-nodes
 
     static func listDrawingNodes(

@@ -91,23 +91,103 @@ struct FieldDailyLogWorkItem: Codable, Equatable, Identifiable {
     }
 }
 
+/// 施工日誌「人員／機具」列：對齊網頁 `PeDraft`／API `personnelEquipmentRows`。
+struct FieldDailyLogPersonnelEquipmentRow: Codable, Equatable, Identifiable {
+    var id: String
+    var projectResourceId: String?
+    var resourceType: String?
+    var unit: String
+    var workType: String
+    var dailyWorkers: String
+    var accumulatedWorkers: String
+    var equipmentName: String
+    var dailyEquipmentQty: String
+    var accumulatedEquipmentQty: String
+
+    static func emptyManualRow() -> FieldDailyLogPersonnelEquipmentRow {
+        FieldDailyLogPersonnelEquipmentRow(
+            id: "m:\(UUID().uuidString)",
+            projectResourceId: nil,
+            resourceType: nil,
+            unit: "",
+            workType: "",
+            dailyWorkers: "0",
+            accumulatedWorkers: "0",
+            equipmentName: "",
+            dailyEquipmentQty: "0",
+            accumulatedEquipmentQty: "0"
+        )
+    }
+}
+
+/// 施工日誌材料列：對齊網頁 `MatDraft`／API `materials`。
+struct FieldDailyLogMaterialRow: Codable, Equatable, Identifiable {
+    var id: String
+    var projectResourceId: String?
+    var materialName: String
+    var unit: String
+    var contractQty: String
+    var dailyUsedQty: String
+    var accumulatedQty: String
+    var remark: String
+
+    static func fromProjectResource(resourceId: String, name: String, unit: String, priorQty: String) -> FieldDailyLogMaterialRow {
+        let prior = FieldDailyLogPersonnelReconcile.parseDecimalString(priorQty)
+        return FieldDailyLogMaterialRow(
+            id: "r:\(resourceId)",
+            projectResourceId: resourceId,
+            materialName: name,
+            unit: unit,
+            contractQty: "0",
+            dailyUsedQty: "0",
+            accumulatedQty: FieldDailyLogPersonnelReconcile.formatDecimal(prior),
+            remark: ""
+        )
+    }
+
+    static func emptyManual() -> FieldDailyLogMaterialRow {
+        FieldDailyLogMaterialRow(
+            id: "m:\(UUID().uuidString)",
+            projectResourceId: nil,
+            materialName: "",
+            unit: "",
+            contractQty: "0",
+            dailyUsedQty: "0",
+            accumulatedQty: "0",
+            remark: ""
+        )
+    }
+}
+
 struct FieldDailyLogPersistedDay: Codable, Equatable {
     var weatherRaw: String?
     var notes: String
     var workItems: [FieldDailyLogWorkItem]
+    var materials: [FieldDailyLogMaterialRow]
+    var personnelRows: [FieldDailyLogPersonnelEquipmentRow]
 
-    static let empty = FieldDailyLogPersistedDay(weatherRaw: nil, notes: "", workItems: [])
+    static let empty = FieldDailyLogPersistedDay(weatherRaw: nil, notes: "", workItems: [], materials: [], personnelRows: [])
 
     enum CodingKeys: String, CodingKey {
         case weatherRaw
         case notes
         case workItems
+        case materials
+        case personnelRows
     }
 
-    init(weatherRaw: String?, notes: String, workItems: [FieldDailyLogWorkItem] = []) {
+    init(
+        weatherRaw: String?,
+        notes: String,
+        workItems: [FieldDailyLogWorkItem] = [],
+        materials: [FieldDailyLogMaterialRow] = [],
+        personnelRows: [FieldDailyLogPersonnelEquipmentRow] = []
+    ) {
         self.weatherRaw = weatherRaw
         self.notes = notes
         self.workItems = workItems
+        self.materials = materials
+        self.personnelRows = personnelRows
     }
 
     init(from decoder: Decoder) throws {
@@ -115,6 +195,8 @@ struct FieldDailyLogPersistedDay: Codable, Equatable {
         weatherRaw = try c.decodeIfPresent(String.self, forKey: .weatherRaw)
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         workItems = try c.decodeIfPresent([FieldDailyLogWorkItem].self, forKey: .workItems) ?? []
+        materials = try c.decodeIfPresent([FieldDailyLogMaterialRow].self, forKey: .materials) ?? []
+        personnelRows = try c.decodeIfPresent([FieldDailyLogPersonnelEquipmentRow].self, forKey: .personnelRows) ?? []
     }
 }
 

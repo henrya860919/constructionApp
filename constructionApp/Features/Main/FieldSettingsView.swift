@@ -85,9 +85,6 @@ struct FieldSettingsView: View {
                             }
 
                             labeledRow(title: "角色", value: systemRoleLabel(user.systemRole))
-                            if let tid = user.tenantId, !tid.isEmpty {
-                                labeledRow(title: "租戶 ID", value: tid, mono: true)
-                            }
                         }
                     }
                 }

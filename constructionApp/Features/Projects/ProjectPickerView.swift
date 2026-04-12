@@ -84,18 +84,6 @@ struct ProjectPickerView: View {
                         Text("選擇專案")
                             .tacticalTitle(26, weight: .bold)
                             .foregroundStyle(theme.onSurface)
-
-                        Text("對應網頁版專案工作區 `/p/:projectId`")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        if let user = session.currentUser {
-                            Text(user.name.uppercased())
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(theme.primary)
-                                .tracking(1.2)
-                                .padding(.top, 4)
-                        }
                     }
                     .padding(.horizontal, 4)
 

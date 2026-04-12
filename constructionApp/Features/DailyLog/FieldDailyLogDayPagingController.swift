@@ -18,6 +18,8 @@ struct FieldDailyLogReadOnlyDayContent: View {
         VStack(alignment: .leading, spacing: 18) {
             weatherBlock
             workItemsBlock
+            materialsBlock
+            personnelBlock
             notesBlock
         }
     }
@@ -85,6 +87,147 @@ struct FieldDailyLogReadOnlyDayContent: View {
                             Text(qty.isEmpty ? "本日完成量：—（\(item.unit)）" : "本日完成量：\(qty)（\(item.unit)）")
                                 .font(.footnote)
                                 .foregroundStyle(theme.mutedLabel)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .fill(theme.surfaceContainerLowest.opacity(0.95))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var materialsBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("材料")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.mutedLabel)
+                .tracking(1.1)
+
+            let rows = persisted.materials.filter { m in
+                let name = m.materialName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let du = FieldDailyLogPersonnelReconcile.parseDecimalString(m.dailyUsedQty)
+                let acc = FieldDailyLogPersonnelReconcile.parseDecimalString(m.accumulatedQty)
+                let remark = m.remark.trimmingCharacters(in: .whitespacesAndNewlines)
+                return m.projectResourceId != nil || !name.isEmpty || du != 0 || acc != 0 || !remark.isEmpty
+            }
+
+            if rows.isEmpty {
+                Text("尚無材料紀錄")
+                    .font(.footnote)
+                    .foregroundStyle(theme.mutedLabel.opacity(0.85))
+                    .padding(.top, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(rows) { m in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(m.materialName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "（未命名）" : m.materialName)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(theme.onSurface)
+                            Text("單位：\(m.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "—" : m.unit)")
+                                .font(.caption)
+                                .foregroundStyle(theme.mutedLabel)
+                            Text("本日 \(m.dailyUsedQty)　累計 \(m.accumulatedQty)")
+                                .font(.footnote)
+                                .foregroundStyle(theme.mutedLabel)
+                            let r = m.remark.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !r.isEmpty {
+                                Text("備註：\(r)")
+                                    .font(.footnote)
+                                    .foregroundStyle(theme.mutedLabel)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .fill(theme.surfaceContainerLowest.opacity(0.95))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var personnelBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("人員及機具")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.mutedLabel)
+                .tracking(1.1)
+
+            let rows = persisted.personnelRows.filter { row in
+                if row.projectResourceId != nil { return true }
+                let t = row.workType.trimmingCharacters(in: .whitespacesAndNewlines)
+                let en = row.equipmentName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let dw = FieldDailyLogPersonnelReconcile.parseIntString(row.dailyWorkers)
+                let aw = FieldDailyLogPersonnelReconcile.parseIntString(row.accumulatedWorkers)
+                let deq = FieldDailyLogPersonnelReconcile.parseDecimalString(row.dailyEquipmentQty)
+                let aeq = FieldDailyLogPersonnelReconcile.parseDecimalString(row.accumulatedEquipmentQty)
+                return !t.isEmpty || !en.isEmpty || dw != 0 || aw != 0 || deq != 0 || aeq != 0
+            }
+
+            if rows.isEmpty {
+                Text("尚無人員／機具紀錄")
+                    .font(.footnote)
+                    .foregroundStyle(theme.mutedLabel.opacity(0.85))
+                    .padding(.top, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(rows) { row in
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let rt = row.resourceType, row.projectResourceId != nil {
+                                HStack(spacing: 8) {
+                                    Text(rt == "equipment" ? "機具" : "人力")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(theme.mutedLabel)
+                                    Text(rt == "equipment"
+                                        ? (row.equipmentName.isEmpty ? "—" : row.equipmentName)
+                                        : (row.workType.isEmpty ? "—" : row.workType))
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(theme.onSurface)
+                                }
+                                Text("單位：\(row.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "—" : row.unit)")
+                                    .font(.caption)
+                                    .foregroundStyle(theme.mutedLabel)
+                                if rt == "labor" {
+                                    Text("本日 \(row.dailyWorkers)　累計 \(row.accumulatedWorkers)")
+                                        .font(.footnote)
+                                        .foregroundStyle(theme.mutedLabel)
+                                } else {
+                                    Text("本日 \(row.dailyEquipmentQty)　累計 \(row.accumulatedEquipmentQty)")
+                                        .font(.footnote)
+                                        .foregroundStyle(theme.mutedLabel)
+                                }
+                            } else {
+                                if !row.workType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text("工別：\(row.workType)")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(theme.onSurface)
+                                }
+                                Text("本日人數 \(row.dailyWorkers)　累計 \(row.accumulatedWorkers)")
+                                    .font(.footnote)
+                                    .foregroundStyle(theme.mutedLabel)
+                                if !row.equipmentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text("機具：\(row.equipmentName)")
+                                        .font(.footnote)
+                                        .foregroundStyle(theme.mutedLabel)
+                                }
+                                Text("本日機具 \(row.dailyEquipmentQty)　累計 \(row.accumulatedEquipmentQty)")
+                                    .font(.footnote)
+                                    .foregroundStyle(theme.mutedLabel)
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
