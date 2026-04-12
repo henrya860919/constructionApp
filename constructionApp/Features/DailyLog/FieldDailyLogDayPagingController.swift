@@ -17,6 +17,7 @@ struct FieldDailyLogReadOnlyDayContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             weatherBlock
+            workItemsBlock
             notesBlock
         }
     }
@@ -57,6 +58,46 @@ struct FieldDailyLogReadOnlyDayContent: View {
                     .font(.footnote)
                     .foregroundStyle(theme.mutedLabel.opacity(0.85))
                     .padding(.top, 2)
+            }
+        }
+    }
+
+    private var workItemsBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("施工項目")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.mutedLabel)
+                .tracking(1.1)
+
+            if persisted.workItems.isEmpty {
+                Text("尚無施工項目")
+                    .font(.footnote)
+                    .foregroundStyle(theme.mutedLabel.opacity(0.85))
+                    .padding(.top, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(persisted.workItems) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(item.itemNo)　\(item.workItemName)")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(theme.onSurface)
+                            let qty = item.dailyQty.trimmingCharacters(in: .whitespacesAndNewlines)
+                            Text(qty.isEmpty ? "本日完成量：—（\(item.unit)）" : "本日完成量：\(qty)（\(item.unit)）")
+                                .font(.footnote)
+                                .foregroundStyle(theme.mutedLabel)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .fill(theme.surfaceContainerLowest.opacity(0.95))
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                        }
+                    }
+                }
             }
         }
     }
@@ -102,10 +143,16 @@ struct FieldDailyLogDaySwipeHostingPage: View {
     }
 
     var body: some View {
-        FieldDailyLogReadOnlyDayContent(persisted: persisted)
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(theme.surface)
+        ScrollView {
+            FieldDailyLogReadOnlyDayContent(persisted: persisted)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                // 與日誌列表外層一致：底部留出 tab／FAB 可捲動空間
+                .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.surface)
+        .scrollDismissesKeyboard(.interactively)
     }
 }
 

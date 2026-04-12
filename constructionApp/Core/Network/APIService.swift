@@ -588,6 +588,34 @@ enum APIService {
         try await authorizedDELETE(url: url, token: token)
     }
 
+    // MARK: - 施工日誌：PCCES 工項選擇器（與網頁 getConstructionDailyLogPccesWorkItems 相同）
+
+    static func fetchConstructionDailyLogPccesWorkItems(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        logDate: String,
+        excludeLogId: String? = nil
+    ) async throws -> ConstructionDailyLogPccesPickerResponseDTO {
+        let pathBase = baseURL
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("construction-daily-logs")
+            .appendingPathComponent("pcces-work-items")
+        var components = URLComponents(url: pathBase, resolvingAgainstBaseURL: false)!
+        var items = [URLQueryItem(name: "logDate", value: logDate)]
+        if let excludeLogId, !excludeLogId.isEmpty {
+            items.append(URLQueryItem(name: "excludeLogId", value: excludeLogId))
+        }
+        components.queryItems = items
+        guard let url = components.url else { throw APIRequestError.invalidURL }
+        return try await authorizedGET(
+            ConstructionDailyLogPccesPickerEnvelope.self,
+            url: url,
+            token: token
+        ).data
+    }
+
     // MARK: - 圖說 drawing-nodes
 
     static func listDrawingNodes(

@@ -13,7 +13,7 @@ enum AppConfiguration: Sendable {
         "https://construction-dashboard-backend-production.up.railway.app/api/v1"
 
     /// DEBUG 預設：家裡區網後端（本機請改此常數或設環境變數 `API_BASE_URL`）。
-    private static let debugDefaultAPIRootURLString = "http://192.168.0.33:3003/api/v1"
+    private static let debugDefaultAPIRootURLString = "http://192.168.0.215:3003/api/v1"
 
     /// Override with Xcode Scheme → Run → Environment: `API_BASE_URL`（例 `http://127.0.0.1:3003/api/v1`）
     nonisolated static var apiRootURL: URL {

@@ -6,6 +6,42 @@
 import SwiftUI
 import UIKit
 
+// MARK: - 有未儲存變更時關閉側滑返回（與自訂返回確認一致）
+
+private struct DailyLogEditInteractivePopGate: UIViewControllerRepresentable {
+    /// `true` ＝ 允許系統邊緣滑回上一頁。
+    var allowsInteractivePop: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        weak var navigationController: UINavigationController?
+    }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let vc = UIViewController()
+        vc.view.backgroundColor = .clear
+        vc.view.isUserInteractionEnabled = false
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        DispatchQueue.main.async {
+            guard let nav = uiViewController.navigationController else { return }
+            context.coordinator.navigationController = nav
+            nav.interactivePopGestureRecognizer?.isEnabled = allowsInteractivePop
+        }
+    }
+
+    static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: Coordinator) {
+        DispatchQueue.main.async {
+            coordinator.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        }
+    }
+}
+
 // MARK: - Weather
 
 enum FieldDailyLogWeather: String, CaseIterable {
@@ -398,20 +434,36 @@ struct ConstructionDailyLogView: View {
 struct ConstructionDailyLogEditView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.fieldTheme) private var theme
+    @Environment(\.dismiss) private var dismiss
     let projectId: String
     let date: Date
     @Bindable var store: FieldDailyLogLocalStore
 
     @State private var weatherSelection: FieldDailyLogWeather?
+    @State private var workItems: [FieldDailyLogWorkItem] = []
     @State private var notesText = ""
     @State private var savePulse = false
     @FocusState private var isNotesFocused: Bool
+    /// 避免從「選工項」返回時 `onAppear` 再次 `syncFromStore` 蓋掉剛寫入的 `@State`。
+    @State private var didSyncFromStoreOnce = false
+    @State private var showLeaveWithoutSaveConfirmation = false
 
     private var normalizedDate: Date { FieldDailyLogCalendar.startOfDay(date) }
     private var dayKey: String { FieldDailyLogCalendar.dayKey(normalizedDate) }
 
     private var isDirty: Bool {
         store.isDirty(dayKey: dayKey)
+    }
+
+    /// 子畫面改選工項時必須寫入 store；僅依賴 `onChange(of: workItems)` 在 Navigation 返回時可能不觸發。
+    private var workItemsDraftBinding: Binding<[FieldDailyLogWorkItem]> {
+        Binding(
+            get: { workItems },
+            set: { newValue in
+                workItems = newValue
+                pushDraft()
+            }
+        )
     }
 
     var body: some View {
@@ -425,6 +477,7 @@ struct ConstructionDailyLogEditView: View {
                     .padding(.top, 4)
 
                 editWeatherSection
+                editWorkItemsSection
                 editNotesSection
 
                 if isDirty {
@@ -446,14 +499,62 @@ struct ConstructionDailyLogEditView: View {
         .background(theme.surface)
         .navigationTitle("編輯日報")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
         .toolbarColorScheme(colorScheme, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    attemptLeaveEditor()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.body.weight(.semibold))
+                        Text("返回")
+                            .font(.body.weight(.medium))
+                    }
+                    .foregroundStyle(theme.primary)
+                }
+                .accessibilityLabel("返回上一頁")
+            }
+        }
+        .alert("尚未儲存變更", isPresented: $showLeaveWithoutSaveConfirmation) {
+            Button("儲存並離開") {
+                dismissKeyboard()
+                persist()
+                dismiss()
+            }
+            Button("捨棄並離開", role: .destructive) {
+                store.revertToLastSaved(dayKey: dayKey)
+                dismiss()
+            }
+            Button("繼續編輯", role: .cancel) {}
+        } message: {
+            Text("您有未寫入裝置的編輯內容。建議先按「儲存」再離開，或選擇捨棄本次變更。")
+        }
+        .background(DailyLogEditInteractivePopGate(allowsInteractivePop: !isDirty))
         .onAppear {
             store.activateProject(projectId)
+            if !didSyncFromStoreOnce {
+                syncFromStore()
+                didSyncFromStoreOnce = true
+            }
+        }
+        .onChange(of: dayKey) { _, _ in
+            // 同一編輯實例若換日（少見）須重載；從選工項返回時 dayKey 不變，不會覆蓋剛選的列。
             syncFromStore()
         }
         .animation(.easeOut(duration: 0.22), value: isDirty)
         .sensoryFeedback(.success, trigger: savePulse)
+    }
+
+    private func attemptLeaveEditor() {
+        dismissKeyboard()
+        if isDirty {
+            showLeaveWithoutSaveConfirmation = true
+        } else {
+            dismiss()
+        }
     }
 
     private var dayTitleString: String {
@@ -499,6 +600,128 @@ struct ConstructionDailyLogEditView: View {
                             }
                     }
                     .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var editWorkItemsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("施工項目")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.mutedLabel)
+                .tracking(1.1)
+
+            NavigationLink {
+                ConstructionDailyLogPccesWorkItemsPickerView(
+                    projectId: projectId,
+                    logDate: dayKey,
+                    workItems: workItemsDraftBinding
+                )
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "list.bullet.rectangle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.primary)
+                    Text("選擇工項")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.onSurface)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.mutedLabel.opacity(0.75))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 13)
+                .background {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .fill(theme.surfaceContainerHighest.opacity(0.88))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                        .strokeBorder(theme.ghostBorder, lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if workItems.isEmpty {
+                Text(
+                    "尚未加入工項。點「選擇工項」載入與網頁相同的核定 PCCES 明細（僅可選結構末層），再回到此處填寫本日完成量。"
+                )
+                .font(.footnote)
+                .foregroundStyle(theme.mutedLabel.opacity(0.85))
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach($workItems) { $item in
+                        let unitLabel = item.unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? "—"
+                            : item.unit
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .center, spacing: 10) {
+                                Text(item.itemNo)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(theme.mutedLabel)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: true, vertical: true)
+                                Text(item.workItemName)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(theme.onSurface)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                                Text(unitLabel)
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(theme.mutedLabel.opacity(0.9))
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(minWidth: 44, alignment: .trailing)
+                                Button {
+                                    let id = item.pccesItemId
+                                    workItems.removeAll { $0.pccesItemId == id }
+                                    pushDraft()
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(theme.statusDanger)
+                                        .frame(width: 36, height: 36)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("移除此工項")
+                            }
+                            Text("本日完成量（\(unitLabel)）")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(theme.mutedLabel)
+                            TextField("0", text: $item.dailyQty)
+                                .font(.body)
+                                .foregroundStyle(theme.onSurface)
+                                .keyboardType(.decimalPad)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .fill(theme.surfaceContainerLowest.opacity(0.95))
+                                }
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .strokeBorder(theme.outlineVariant.opacity(0.18), lineWidth: 1)
+                                }
+                                .onChange(of: item.dailyQty) { _, _ in
+                                    pushDraft()
+                                }
+                        }
+                        .padding(12)
+                        .background {
+                            RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                .fill(theme.surfaceContainerLow.opacity(0.6))
+                        }
+                        .contextMenu {
+                            Button("移除此工項", role: .destructive) {
+                                workItems.removeAll { $0.pccesItemId == item.pccesItemId }
+                                pushDraft()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -551,10 +774,11 @@ struct ConstructionDailyLogEditView: View {
             weatherSelection = nil
         }
         notesText = persisted.notes
+        workItems = persisted.workItems
     }
 
     private func persistedFromUI() -> FieldDailyLogPersistedDay {
-        FieldDailyLogPersistedDay(weatherRaw: weatherSelection?.rawValue, notes: notesText)
+        FieldDailyLogPersistedDay(weatherRaw: weatherSelection?.rawValue, notes: notesText, workItems: workItems)
     }
 
     private func pushDraft() {
