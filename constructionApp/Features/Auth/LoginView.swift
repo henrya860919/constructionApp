@@ -49,27 +49,16 @@ struct LoginView: View {
     var body: some View {
         @Bindable var model = model
         ZStack {
-            theme.surface
-                .ignoresSafeArea()
-
-            LinearGradient(
-                colors: [
-                    theme.surfaceContainerLow.opacity(0.4),
-                    theme.surface,
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            FieldAmbientBackground()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(spacing: 28) {
                     header
 
-                    TacticalGlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
+                    TacticalGlassCard(cornerRadius: 28, elevated: true) {
+                        VStack(alignment: .leading, spacing: 16) {
                             TacticalTextField(
-                                title: "帳號",
+                                title: "Email",
                                 text: $model.email,
                                 keyboard: .emailAddress,
                                 contentType: .username
@@ -89,7 +78,7 @@ struct LoginView: View {
                             .onSubmit { Task { await model.submit(session: session) } }
 
                             if let err = model.errorMessage {
-                                Text(err)
+                                Label(err, systemImage: "exclamationmark.circle.fill")
                                     .font(.subheadline)
                                     .foregroundStyle(theme.tertiary)
                                     .accessibilityLabel("錯誤：\(err)")
@@ -98,11 +87,15 @@ struct LoginView: View {
                             Button {
                                 Task { await model.submit(session: session) }
                             } label: {
-                                if model.isLoading {
-                                    ProgressView()
-                                        .tint(theme.onPrimary)
-                                } else {
-                                    Text("登入")
+                                HStack(spacing: 10) {
+                                    if model.isLoading {
+                                        ProgressView()
+                                            .tint(theme.onPrimary)
+                                    } else {
+                                        Image(systemName: "arrow.right.circle.fill")
+                                            .font(.headline)
+                                    }
+                                    Text(model.isLoading ? "登入中…" : "登入")
                                 }
                             }
                             .buttonStyle(TacticalPrimaryButtonStyle())
@@ -110,33 +103,24 @@ struct LoginView: View {
                             .accessibilityHint("送出登入表單")
                         }
                     }
-
-                    
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 48)
-                .padding(.bottom, 32)
+                .padding(.top, 56)
+                .padding(.bottom, 40)
             }
             .scrollDismissesKeyboard(.immediately)
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Nexa")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(theme.primary)
-                .tracking(2)
-
-            Text("Nexa Construction App")
-                .tacticalDisplay(32, weight: .bold)
-                .foregroundStyle(theme.onSurface)
-
-            Text(AppDateDisplay.string(from: Date.now))
-                .font(.tacticalMono(.subheadline, weight: .medium))
-                .foregroundStyle(theme.mutedLabel)
-                .padding(.top, 4)
-        }
+        Image("BrandLogo")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: 300)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .accessibilityLabel("NexA Logo")
     }
 }
 
