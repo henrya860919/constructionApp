@@ -15,6 +15,7 @@ struct ConstructionDailyLogMaterialResourcesPickerView: View {
 
     let projectId: String
     let logDate: String
+    var excludeLogId: String? = nil
     @Binding var materials: [FieldDailyLogMaterialRow]
 
     @State private var resources: [ConstructionDailyLogMaterialResourceDTO] = []
@@ -144,7 +145,7 @@ struct ConstructionDailyLogMaterialResourcesPickerView: View {
                     token: token,
                     projectId: projectId,
                     logDate: logDate,
-                    excludeLogId: nil
+                    excludeLogId: excludeLogId
                 )
             }
             resources = defs.materialResources

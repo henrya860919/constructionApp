@@ -450,9 +450,20 @@ struct ConstructionDailyLogEditView: View {
     @State private var savePulse = false
     @FocusState private var isNotesFocused: Bool
     @State private var showLeaveWithoutSaveConfirmation = false
+    /// 後端載入的完整日誌（供 PATCH 合併未在 App 編輯的欄位）。
+    @State private var loadedLog: ConstructionDailyLogDetailDTO?
+    /// 最近一次 `defaults` 回應（新建日誌時必填 projectName 等）。
+    @State private var formDefaultsSnapshot: ConstructionDailyLogFormDefaultsDTO?
+    @State private var saveError: String?
+    @State private var isSaving = false
 
     private var normalizedDate: Date { FieldDailyLogCalendar.startOfDay(date) }
     private var dayKey: String { FieldDailyLogCalendar.dayKey(normalizedDate) }
+
+    /// 編輯既有日誌時帶給工項／材料選擇器與 defaults，排除本筆。
+    private var excludeLogIdForApi: String? {
+        loadedLog?.id ?? store.day(for: dayKey).remoteLogId
+    }
 
     private var isDirty: Bool {
         store.isDirty(dayKey: dayKey)
@@ -500,9 +511,10 @@ struct ConstructionDailyLogEditView: View {
                         dismissKeyboard()
                         persist()
                     } label: {
-                        Text("儲存")
+                        Text(isSaving ? "同步中…" : "儲存")
                     }
                     .buttonStyle(TacticalPrimaryButtonStyle())
+                    .disabled(isSaving)
                     .padding(.top, 8)
                 }
             }
@@ -533,11 +545,18 @@ struct ConstructionDailyLogEditView: View {
                 .accessibilityLabel("返回上一頁")
             }
         }
+        .alert("同步失敗", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("確定", role: .cancel) { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
+        }
         .alert("尚未儲存變更", isPresented: $showLeaveWithoutSaveConfirmation) {
             Button("儲存並離開") {
                 dismissKeyboard()
-                persist()
-                dismiss()
+                Task { await saveThenDismiss() }
             }
             Button("捨棄並離開", role: .destructive) {
                 store.revertToLastSaved(dayKey: dayKey)
@@ -545,7 +564,7 @@ struct ConstructionDailyLogEditView: View {
             }
             Button("繼續編輯", role: .cancel) {}
         } message: {
-            Text("您有未寫入裝置的編輯內容。建議先按「儲存」再離開，或選擇捨棄本次變更。")
+            Text("您有未同步的編輯內容。建議先按「儲存」同步至伺服器再離開，或選擇捨棄本次變更。")
         }
         .background(DailyLogEditInteractivePopGate(allowsInteractivePop: !isDirty))
         .onAppear {
@@ -554,12 +573,15 @@ struct ConstructionDailyLogEditView: View {
         .onChange(of: dayKey) { _, _ in
             syncFromStore()
         }
-        /// 初次進入與換日時自磁碟載入草稿並向後端同步 defaults（人機／材料）；從「選工項」等子頁返回時不重跑，避免覆蓋 `@State`。
+        /// 初次進入與換日：先拉遠端日誌（若有）→ 再 defaults；從子頁返回不重跑本 task。
         .task(id: dayKey) {
             await MainActor.run {
                 store.activateProject(projectId)
+                loadedLog = nil
+                formDefaultsSnapshot = nil
                 syncFromStore()
             }
+            await loadRemoteConstructionDailyLog()
             await refreshConstructionDailyLogDefaultsFromAPI()
         }
         .animation(.easeOut(duration: 0.22), value: isDirty)
@@ -634,6 +656,7 @@ struct ConstructionDailyLogEditView: View {
                 ConstructionDailyLogPccesWorkItemsPickerView(
                     projectId: projectId,
                     logDate: dayKey,
+                    excludeLogId: excludeLogIdForApi,
                     workItems: workItemsDraftBinding
                 )
             } label: {
@@ -694,8 +717,8 @@ struct ConstructionDailyLogEditView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .frame(minWidth: 44, alignment: .trailing)
                                 Button {
-                                    let id = item.pccesItemId
-                                    workItems.removeAll { $0.pccesItemId == id }
+                                    let rowId = item.id
+                                    workItems.removeAll { $0.id == rowId }
                                     pushDraft()
                                 } label: {
                                     Image(systemName: "trash")
@@ -735,7 +758,7 @@ struct ConstructionDailyLogEditView: View {
                         }
                         .contextMenu {
                             Button("移除此工項", role: .destructive) {
-                                workItems.removeAll { $0.pccesItemId == item.pccesItemId }
+                                workItems.removeAll { $0.id == item.id }
                                 pushDraft()
                             }
                         }
@@ -756,6 +779,7 @@ struct ConstructionDailyLogEditView: View {
                 ConstructionDailyLogMaterialResourcesPickerView(
                     projectId: projectId,
                     logDate: dayKey,
+                    excludeLogId: excludeLogIdForApi,
                     materials: materialsDraftBinding
                 )
             } label: {
@@ -1332,6 +1356,7 @@ struct ConstructionDailyLogEditView: View {
 
     private func refreshConstructionDailyLogDefaultsFromAPI() async {
         guard session.isAuthenticated else { return }
+        let exclude = await MainActor.run { excludeLogIdForApi }
         do {
             let defs = try await session.withValidAccessToken { token in
                 try await APIService.fetchConstructionDailyLogFormDefaults(
@@ -1339,10 +1364,11 @@ struct ConstructionDailyLogEditView: View {
                     token: token,
                     projectId: projectId,
                     logDate: dayKey,
-                    excludeLogId: nil
+                    excludeLogId: exclude
                 )
             }
             await MainActor.run {
+                formDefaultsSnapshot = defs
                 personnelPriorsByResourceId = defs.personnelResourcePriors
                 personnelRows = FieldDailyLogPersonnelReconcile.reconcile(
                     resources: defs.personnelResources,
@@ -1425,7 +1451,8 @@ struct ConstructionDailyLogEditView: View {
             notes: notesText,
             workItems: workItems,
             materials: materials,
-            personnelRows: personnelRows
+            personnelRows: personnelRows,
+            remoteLogId: loadedLog?.id ?? store.day(for: dayKey).remoteLogId
         )
     }
 
@@ -1435,9 +1462,249 @@ struct ConstructionDailyLogEditView: View {
 
     private func persist() {
         store.activateProject(projectId)
+        dismissKeyboard()
+        if !session.isAuthenticated {
+            pushDraft()
+            store.save(dayKey: dayKey)
+            savePulse.toggle()
+            return
+        }
+        guard formDefaultsSnapshot != nil else {
+            saveError = "無法同步伺服器：尚未載入表單預設，請確認網路後再試。"
+            return
+        }
+        Task { @MainActor in
+            await runServerPersist { savePulse.toggle() }
+        }
+    }
+
+    @MainActor
+    private func saveThenDismiss() async {
+        saveError = nil
+        store.activateProject(projectId)
+        if session.isAuthenticated, formDefaultsSnapshot != nil {
+            await runServerPersist {}
+        } else {
+            pushDraft()
+            store.save(dayKey: dayKey)
+            savePulse.toggle()
+        }
+        if saveError == nil {
+            dismiss()
+        }
+    }
+
+    @MainActor
+    private func runServerPersist(_ afterSuccess: @escaping () -> Void) async {
+        isSaving = true
+        defer { isSaving = false }
+        guard let defs = formDefaultsSnapshot else {
+            saveError = "無法同步伺服器：尚未載入表單預設，請確認網路後再試。"
+            return
+        }
+        pushDraft()
+        let logIdForUpsert = loadedLog?.id ?? store.day(for: dayKey).remoteLogId
+        do {
+            let body = buildUpsertBody(defaults: defs)
+            let dto: ConstructionDailyLogDetailDTO = try await session.withValidAccessToken { token in
+                if let rid = logIdForUpsert {
+                    return try await APIService.updateConstructionDailyLog(
+                        baseURL: AppConfiguration.apiRootURL,
+                        token: token,
+                        projectId: projectId,
+                        logId: rid,
+                        body: body
+                    )
+                }
+                return try await APIService.createConstructionDailyLog(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    body: body
+                )
+            }
+            applyServerDto(dto)
+            afterSuccess()
+        } catch let e as APIRequestError {
+            saveError = e.localizedDescription
+        } catch is FieldSessionAuthError {
+            saveError = "登入已過期，請重新登入。"
+        } catch {
+            saveError = "同步失敗，請稍後再試。"
+        }
+    }
+
+    private func loadRemoteConstructionDailyLog() async {
+        guard session.isAuthenticated else { return }
+        do {
+            let logId = try await session.withValidAccessToken { token in
+                try await APIService.findConstructionDailyLogId(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    logDateYMD: dayKey
+                )
+            }
+            guard let logId else { return }
+            let dto = try await session.withValidAccessToken { token in
+                try await APIService.getConstructionDailyLog(
+                    baseURL: AppConfiguration.apiRootURL,
+                    token: token,
+                    projectId: projectId,
+                    logId: logId
+                )
+            }
+            await MainActor.run {
+                applyServerDto(dto)
+            }
+        } catch {
+            // 離線或尚無遠端日誌：沿用本地草稿
+        }
+    }
+
+    private func applyServerDto(_ d: ConstructionDailyLogDetailDTO) {
+        loadedLog = d
+        let am = d.weatherAm?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        weatherSelection = FieldDailyLogWeather(rawValue: am)
+        notesText = d.importantNotes
+        workItems = d.workItems.map { FieldDailyLogWorkItem.fromServer($0) }
+        materials = d.materials.map { FieldDailyLogMaterialRow.fromServer($0) }
+        personnelRows = d.personnelEquipmentRows.map { FieldDailyLogPersonnelEquipmentRow.fromServer($0) }
         pushDraft()
         store.save(dayKey: dayKey)
-        savePulse.toggle()
+    }
+
+    private func buildUpsertBody(defaults: ConstructionDailyLogFormDefaultsDTO) -> ConstructionDailyLogUpsertBody {
+        let b = loadedLog
+        let pn = nonEmptyOrPlaceholder(b?.projectName ?? defaults.projectName, placeholder: "（未填專案名稱）")
+        let cn = nonEmptyOrPlaceholder(b?.contractorName ?? defaults.contractorName, placeholder: "（未填廠商名稱）")
+
+        let weatherAm = weatherSelection.map(\.rawValue)
+
+        let workPayload: [ConstructionDailyLogUpsertWorkItem] = workItems
+            .filter { !$0.workItemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { w in
+                let up = w.unitPrice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let acc = w.accumulatedQty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "0"
+                    : w.accumulatedQty.trimmingCharacters(in: .whitespacesAndNewlines)
+                return ConstructionDailyLogUpsertWorkItem(
+                    pccesItemId: w.pccesItemId,
+                    unitPrice: up.isEmpty ? nil : up,
+                    workItemName: w.workItemName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    unit: w.unit.trimmingCharacters(in: .whitespacesAndNewlines),
+                    contractQty: w.contractQty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "0"
+                        : w.contractQty.trimmingCharacters(in: .whitespacesAndNewlines),
+                    dailyQty: w.dailyQty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "0"
+                        : w.dailyQty.trimmingCharacters(in: .whitespacesAndNewlines),
+                    accumulatedQty: acc,
+                    remark: w.remark
+                )
+            }
+
+        let mats: [ConstructionDailyLogUpsertMaterial] = materials
+            .filter { m in
+                if m.projectResourceId != nil { return true }
+                return !m.materialName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            .map { m in
+                let hasRes = m.projectResourceId != nil
+                let cq = m.contractQty.trimmingCharacters(in: .whitespacesAndNewlines)
+                return ConstructionDailyLogUpsertMaterial(
+                    projectResourceId: m.projectResourceId,
+                    materialName: m.materialName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    unit: m.unit.trimmingCharacters(in: .whitespacesAndNewlines),
+                    contractQty: hasRes ? "0" : (cq.isEmpty ? "0" : cq),
+                    dailyUsedQty: m.dailyUsedQty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "0"
+                        : m.dailyUsedQty.trimmingCharacters(in: .whitespacesAndNewlines),
+                    accumulatedQty: m.accumulatedQty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "0"
+                        : m.accumulatedQty.trimmingCharacters(in: .whitespacesAndNewlines),
+                    remark: m.remark
+                )
+            }
+
+        let pe: [ConstructionDailyLogUpsertPersonnel] = personnelRows
+            .filter { p in
+                if p.projectResourceId != nil { return true }
+                let wt = p.workType.trimmingCharacters(in: .whitespacesAndNewlines)
+                let en = p.equipmentName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let dw = Int(p.dailyWorkers) ?? 0
+                let aw = Int(p.accumulatedWorkers) ?? 0
+                let dq = FieldDailyLogPersonnelReconcile.parseDecimalString(p.dailyEquipmentQty)
+                let aq = FieldDailyLogPersonnelReconcile.parseDecimalString(p.accumulatedEquipmentQty)
+                return !wt.isEmpty || !en.isEmpty || dw > 0 || aw > 0 || dq > 0 || aq > 0
+            }
+            .map { p in
+                ConstructionDailyLogUpsertPersonnel(
+                    projectResourceId: p.projectResourceId,
+                    workType: p.workType.trimmingCharacters(in: .whitespacesAndNewlines),
+                    dailyWorkers: max(0, Int(p.dailyWorkers) ?? 0),
+                    accumulatedWorkers: max(0, Int(p.accumulatedWorkers) ?? 0),
+                    equipmentName: p.equipmentName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    dailyEquipmentQty: p.dailyEquipmentQty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "0"
+                        : p.dailyEquipmentQty.trimmingCharacters(in: .whitespacesAndNewlines),
+                    accumulatedEquipmentQty: p.accumulatedEquipmentQty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        ? "0"
+                        : p.accumulatedEquipmentQty.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+            }
+
+        let nwi: String = {
+            guard let v = b?.newWorkerInsurance else { return "no_new" }
+            if v == "yes" || v == "no" { return v }
+            return "no_new"
+        }()
+
+        return ConstructionDailyLogUpsertBody(
+            reportNo: trimmedOptional(b?.reportNo),
+            weatherAm: weatherAm,
+            weatherPm: trimmedOptional(b?.weatherPm),
+            logDate: dayKey,
+            projectName: pn,
+            contractorName: cn,
+            approvedDurationDays: b?.approvedDurationDays ?? defaults.approvedDurationDays,
+            accumulatedDays: b?.accumulatedDays,
+            remainingDays: b?.remainingDays,
+            extendedDays: b?.extendedDays,
+            startDate: b?.startDate ?? defaults.startDate,
+            completionDate: trimmedOptional(b?.completionDate),
+            actualProgress: parseActualProgressDouble(b?.actualProgress),
+            specialItemA: b?.specialItemA ?? "",
+            specialItemB: b?.specialItemB ?? "",
+            hasTechnician: b?.hasTechnician ?? false,
+            preWorkEducation: (b?.preWorkEducation == "yes") ? "yes" : "no",
+            newWorkerInsurance: nwi,
+            ppeCheck: (b?.ppeCheck == "yes") ? "yes" : "no",
+            otherSafetyNotes: b?.otherSafetyNotes ?? "",
+            sampleTestRecord: b?.sampleTestRecord ?? "",
+            subcontractorNotice: b?.subcontractorNotice ?? "",
+            importantNotes: notesText,
+            siteManagerSigned: b?.siteManagerSigned ?? false,
+            workItems: workPayload,
+            materials: mats,
+            personnelEquipmentRows: pe
+        )
+    }
+
+    private func nonEmptyOrPlaceholder(_ s: String, placeholder: String) -> String {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? placeholder : t
+    }
+
+    private func trimmedOptional(_ s: String?) -> String? {
+        guard let s else { return nil }
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    private func parseActualProgressDouble(_ s: String?) -> Double? {
+        guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        return Double(s.replacingOccurrences(of: ",", with: ""))
     }
 
     /// 收鍵盤：SwiftUI 焦點 + 確保 UITextView（TextEditor）一併 resign。

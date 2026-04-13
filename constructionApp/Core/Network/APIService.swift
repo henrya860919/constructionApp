@@ -643,6 +643,109 @@ enum APIService {
         ).data
     }
 
+    /// 分頁列出施工日誌（與網頁 `listConstructionDailyLogs` 相同）。
+    static func listConstructionDailyLogsPage(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        page: Int,
+        limit: Int = 100
+    ) async throws -> ConstructionDailyLogListEnvelope {
+        var components = URLComponents(
+            url: baseURL
+                .appendingPathComponent("projects")
+                .appendingPathComponent(projectId)
+                .appendingPathComponent("construction-daily-logs"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "page", value: "\(page)"),
+            URLQueryItem(name: "limit", value: "\(limit)"),
+        ]
+        guard let url = components.url else { throw APIRequestError.invalidURL }
+        return try await authorizedGET(ConstructionDailyLogListEnvelope.self, url: url, token: token)
+    }
+
+    /// 依填表日 `yyyy-MM-dd` 尋找該專案日誌 id（列表無篩選時於前端比對 `logDate`）。
+    static func findConstructionDailyLogId(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        logDateYMD: String,
+        maxPages: Int = 80
+    ) async throws -> String? {
+        var page = 1
+        var totalFetched = 0
+        for _ in 0 ..< maxPages {
+            let env = try await listConstructionDailyLogsPage(
+                baseURL: baseURL,
+                token: token,
+                projectId: projectId,
+                page: page,
+                limit: 100
+            )
+            for item in env.data {
+                if item.logDate.prefix(10) == logDateYMD.prefix(10) { return item.id }
+            }
+            totalFetched += env.data.count
+            if env.data.isEmpty || totalFetched >= env.meta.total { break }
+            page += 1
+        }
+        return nil
+    }
+
+    static func getConstructionDailyLog(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        logId: String
+    ) async throws -> ConstructionDailyLogDetailDTO {
+        let url = baseURL
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("construction-daily-logs")
+            .appendingPathComponent(logId)
+        return try await authorizedGET(ConstructionDailyLogDetailEnvelope.self, url: url, token: token).data
+    }
+
+    static func createConstructionDailyLog(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        body: ConstructionDailyLogUpsertBody
+    ) async throws -> ConstructionDailyLogDetailDTO {
+        let url = baseURL
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("construction-daily-logs")
+        return try await authorizedPOST(
+            ConstructionDailyLogDetailEnvelope.self,
+            url: url,
+            token: token,
+            body: body
+        ).data
+    }
+
+    static func updateConstructionDailyLog(
+        baseURL: URL,
+        token: String,
+        projectId: String,
+        logId: String,
+        body: ConstructionDailyLogUpsertBody
+    ) async throws -> ConstructionDailyLogDetailDTO {
+        let url = baseURL
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("construction-daily-logs")
+            .appendingPathComponent(logId)
+        return try await authorizedPATCH(
+            ConstructionDailyLogDetailEnvelope.self,
+            url: url,
+            token: token,
+            body: body
+        ).data
+    }
+
     // MARK: - 圖說 drawing-nodes
 
     static func listDrawingNodes(

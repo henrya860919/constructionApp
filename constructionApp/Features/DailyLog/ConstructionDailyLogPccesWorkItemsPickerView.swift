@@ -27,6 +27,8 @@ struct ConstructionDailyLogPccesWorkItemsPickerView: View {
     let projectId: String
     /// `yyyy-MM-dd`，與後端 logDate 一致。
     let logDate: String
+    /// 編輯既有日誌時傳入，供後端排除本筆計算 prior。
+    var excludeLogId: String? = nil
     @Binding var workItems: [FieldDailyLogWorkItem]
 
     @State private var rows: [ConstructionDailyLogPccesPickerRowDTO] = []
@@ -99,7 +101,8 @@ struct ConstructionDailyLogPccesWorkItemsPickerView: View {
                     baseURL: AppConfiguration.apiRootURL,
                     token: token,
                     projectId: projectId,
-                    logDate: logDate
+                    logDate: logDate,
+                    excludeLogId: excludeLogId
                 )
             }
             rows = data.rows
@@ -233,6 +236,7 @@ struct ConstructionDailyLogPccesWorkItemsLevelView: View {
         } else {
             workItems.append(
                 FieldDailyLogWorkItem(
+                    id: node.pccesItemId,
                     pccesItemId: node.pccesItemId,
                     itemNo: node.itemNo,
                     workItemName: node.workItemName,
@@ -240,7 +244,9 @@ struct ConstructionDailyLogPccesWorkItemsLevelView: View {
                     contractQty: node.contractQty,
                     unitPrice: node.unitPrice,
                     pccesItemKind: node.itemKind,
-                    dailyQty: ""
+                    dailyQty: "",
+                    accumulatedQty: "0",
+                    remark: ""
                 )
             )
         }
