@@ -52,7 +52,7 @@ enum FieldDailyLogWeather: String, CaseIterable {
 
 // MARK: - Calendar helpers
 
-private enum FieldDailyLogCalendar {
+enum FieldDailyLogCalendar {
     static let gregorian: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.locale = Locale(identifier: "zh_Hant_TW")

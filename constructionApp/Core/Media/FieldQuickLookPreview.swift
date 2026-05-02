@@ -53,6 +53,18 @@ private struct FieldQuickLookRepresentable: UIViewControllerRepresentable {
     }
 }
 
+/// 內嵌 Quick Look：無「完成」按鈕、無 ZStack chrome，給 NavigationSplitView detail 欄等需要直接內嵌的場景使用。
+struct FieldQuickLookPreviewEmbedded: View {
+    @Environment(\.fieldTheme) private var theme
+    let fileURL: URL
+    var title: String?
+
+    var body: some View {
+        FieldQuickLookRepresentable(fileURL: fileURL, title: title)
+            .background(theme.surface)
+    }
+}
+
 /// 全螢幕 Quick Look，頂部「完成」關閉。
 struct FieldQuickLookPreviewSheet: View {
     @Environment(\.fieldTheme) private var theme

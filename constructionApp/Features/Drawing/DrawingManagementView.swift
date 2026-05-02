@@ -504,7 +504,7 @@ private struct DrawingNodesListBody: View {
     }
 }
 
-private struct DrawingFolderRowLabel: View {
+struct DrawingFolderRowLabel: View {
     @Environment(\.fieldTheme) private var theme
     let name: String
 
@@ -575,7 +575,13 @@ private struct DrawingLeafCardView: View {
             Button {
                 Task { await openLatestPreview() }
             } label: {
-                cardInterior
+                DrawingLeafCardBody(
+                    node: node,
+                    revisions: revisions,
+                    revisionsLoaded: vm.revisionsByNodeId[node.id] != nil,
+                    isLatestFilePreloaded: isLatestFilePreloaded,
+                    isPreparingPreview: isPreparingPreview
+                )
             }
             .buttonStyle(.plain)
             .disabled(!canOpenPreview || isPreparingPreview)
@@ -597,112 +603,6 @@ private struct DrawingLeafCardView: View {
         .onReceive(NotificationCenter.default.publisher(for: .fieldCacheStorageDidChange)) { _ in
             offlineStoreRefreshTick &+= 1
         }
-    }
-
-    private var cardInterior: some View {
-        TacticalGlassCard(elevated: true) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "doc.richtext")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(theme.primary.opacity(0.95))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(displayFileName)
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(theme.onSurface)
-                            .multilineTextAlignment(.leading)
-                        Text(versionSummary)
-                            .font(.caption)
-                            .foregroundStyle(theme.mutedLabel)
-                    }
-                    Spacer(minLength: 0)
-                    if isPreparingPreview {
-                        ProgressView()
-                            .tint(theme.primary)
-                    } else {
-                        HStack(spacing: 8) {
-                            if isLatestFilePreloaded {
-                                Text("已預載")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(theme.primary)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background {
-                                        Capsule()
-                                            .fill(theme.primary.opacity(0.18))
-                                    }
-                            }
-                            Image(systemName: "eye.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(theme.mutedLabel.opacity(0.85))
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    metaRow(label: "上傳者", value: uploaderLine)
-                    metaRow(label: "更新", value: updatedLine)
-                    if let sz = sizeLine {
-                        metaRow(label: "大小", value: sz)
-                    }
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("點兩下以預覽最新修訂")
-    }
-
-    private func metaRow(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(label)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(theme.mutedLabel)
-                .frame(width: 44, alignment: .leading)
-            Text(value)
-                .font(.caption)
-                .foregroundStyle(theme.onSurface.opacity(0.88))
-                .multilineTextAlignment(.leading)
-        }
-    }
-
-    private var versionSummary: String {
-        if revisions.isEmpty, vm.revisionsByNodeId[node.id] == nil {
-            return "載入版本資訊中…"
-        }
-        if revisions.isEmpty {
-            return "尚無修訂檔案"
-        }
-        let latest = revisions[0].createdAt.drawingFormattedDisplay()
-        return "共 \(revisions.count) 版 · 最新 \(latest)"
-    }
-
-    private var uploaderLine: String {
-        if revisions.isEmpty { return "—" }
-        if let n = revisions[0].uploadedBy?.name, !n.isEmpty { return n }
-        return "—"
-    }
-
-    private var updatedLine: String {
-        if let r0 = revisions.first {
-            return r0.createdAt.drawingFormattedDisplay()
-        }
-        if let c = node.latestFile?.createdAt {
-            return c.drawingFormattedDisplay()
-        }
-        return "—"
-    }
-
-    private var sizeLine: String? {
-        let n: Int?
-        if let r0 = revisions.first {
-            n = r0.fileSize
-        } else if let f = node.latestFile {
-            n = f.fileSize
-        } else {
-            n = nil
-        }
-        guard let n else { return nil }
-        return formatBytes(n)
     }
 
     @MainActor
@@ -766,6 +666,129 @@ private struct DrawingLeafCardView: View {
         } catch {
             previewError = error.localizedDescription
         }
+    }
+
+}
+
+// MARK: - Leaf card body（純視覺、可重用；iPhone 由 DrawingLeafCardView 用，iPad 由 DrawingIPadBrowserView 用）
+
+struct DrawingLeafCardBody: View {
+    @Environment(\.fieldTheme) private var theme
+    let node: DrawingNodeDTO
+    let revisions: [DrawingRevisionDTO]
+    /// `true` 代表 vm 已嘗試載入過此 node 的 revisions（用來區分「載入中」vs「尚無修訂」文案）。
+    let revisionsLoaded: Bool
+    let isLatestFilePreloaded: Bool
+    let isPreparingPreview: Bool
+
+    var body: some View {
+        TacticalGlassCard(elevated: true) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "doc.richtext")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(theme.primary.opacity(0.95))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(displayFileName)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(theme.onSurface)
+                            .multilineTextAlignment(.leading)
+                        Text(versionSummary)
+                            .font(.caption)
+                            .foregroundStyle(theme.mutedLabel)
+                    }
+                    Spacer(minLength: 0)
+                    if isPreparingPreview {
+                        ProgressView()
+                            .tint(theme.primary)
+                    } else {
+                        HStack(spacing: 8) {
+                            if isLatestFilePreloaded {
+                                Text("已預載")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(theme.primary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background {
+                                        Capsule()
+                                            .fill(theme.primary.opacity(0.18))
+                                    }
+                            }
+                            Image(systemName: "eye.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(theme.mutedLabel.opacity(0.85))
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    metaRow(label: "上傳者", value: uploaderLine)
+                    metaRow(label: "更新", value: updatedLine)
+                    if let sz = sizeLine {
+                        metaRow(label: "大小", value: sz)
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("點兩下以預覽最新修訂")
+    }
+
+    private var displayFileName: String {
+        node.latestFile?.fileName ?? node.name
+    }
+
+    private func metaRow(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(theme.mutedLabel)
+                .frame(width: 44, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(theme.onSurface.opacity(0.88))
+                .multilineTextAlignment(.leading)
+        }
+    }
+
+    private var versionSummary: String {
+        if revisions.isEmpty, !revisionsLoaded {
+            return "載入版本資訊中…"
+        }
+        if revisions.isEmpty {
+            return "尚無修訂檔案"
+        }
+        let latest = revisions[0].createdAt.drawingFormattedDisplay()
+        return "共 \(revisions.count) 版 · 最新 \(latest)"
+    }
+
+    private var uploaderLine: String {
+        if revisions.isEmpty { return "—" }
+        if let n = revisions[0].uploadedBy?.name, !n.isEmpty { return n }
+        return "—"
+    }
+
+    private var updatedLine: String {
+        if let r0 = revisions.first {
+            return r0.createdAt.drawingFormattedDisplay()
+        }
+        if let c = node.latestFile?.createdAt {
+            return c.drawingFormattedDisplay()
+        }
+        return "—"
+    }
+
+    private var sizeLine: String? {
+        let n: Int?
+        if let r0 = revisions.first {
+            n = r0.fileSize
+        } else if let f = node.latestFile {
+            n = f.fileSize
+        } else {
+            n = nil
+        }
+        guard let n else { return nil }
+        return formatBytes(n)
     }
 
     private func formatBytes(_ n: Int) -> String {

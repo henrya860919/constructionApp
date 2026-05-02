@@ -231,6 +231,10 @@ struct RepairRequestsListView: View {
     @Bindable var model: RepairListViewModel
     @Binding var fabScrollIdle: Bool
     var listChrome: ListChrome = .main
+    /// iPad 三欄式樣板使用：當提供時，點選列表 item 改為呼叫 closure（讓父層更新 detail 欄 selection），不再走 NavigationStack push 到 RepairRequestDetailView。compact／iPhone 維持 nil → push 既有行為。
+    var onSelectRepair: ((String) -> Void)? = nil
+    /// iPad 三欄式高亮：當前在 detail 欄顯示的 repair id。
+    var selectedRepairId: String? = nil
 
     @Environment(FieldOutboxStore.self) private var outbox
     @Environment(SessionManager.self) private var session
@@ -392,7 +396,8 @@ struct RepairRequestsListView: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 20)
-            .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
+            /// iPhone 用大 inset 避開 FloatingTabBar；iPad 三欄式 content 欄沒 tab bar，FAB 直接靠近底部 24pt。判斷依據用 `onSelectRepair != nil`（只在 iPad 路徑由 IPadShellView 傳入）— SwiftUI 在 NavigationSplitView 子欄位會把 horizontalSizeClass 識別為 compact，所以不能靠 hSize 判斷。
+            .padding(.bottom, onSelectRepair != nil ? 24 : TacticalGlassTheme.fieldFABBottomInset)
             .opacity(fabScrollIdle ? 1 : 0)
             .allowsHitTesting(fabScrollIdle)
             .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
@@ -491,9 +496,20 @@ struct RepairRequestsListView: View {
                 }
                 ForEach(model.items) { item in
                     Button {
-                        navigateToRepairId = item.id
+                        if let onSelect = onSelectRepair {
+                            onSelect(item.id)
+                        } else {
+                            navigateToRepairId = item.id
+                        }
                     } label: {
                         repairRow(item)
+                            .overlay {
+                                /// iPad 三欄式：被選中項目加 12pt 圓角主色 stroke。
+                                if selectedRepairId == item.id {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .stroke(theme.primary, lineWidth: 2)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
@@ -781,6 +797,8 @@ struct RepairRequestDetailView: View {
     let projectId: String
     let repairId: String
     let accessToken: String
+    /// iPad 三欄式內嵌模式：隱藏 navigation bar 標題與背景橫條（detail 永遠在右欄、使用者已從 Sidebar 知道在哪）。compact／push 模式預設 false 維持既有 chrome。
+    var ipadEmbedded: Bool = false
 
     @State private var model = RepairDetailViewModel()
     @State private var primaryTab: RepairDetailPrimaryTab = .detail
@@ -855,16 +873,18 @@ struct RepairRequestDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 20)
-                .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
+                /// iPad 三欄式 detail 沒 tab bar，FAB 用 24pt；iPhone 用既有大 inset。
+                .padding(.bottom, ipadEmbedded ? 24 : TacticalGlassTheme.fieldFABBottomInset)
                 .opacity(fabScrollIdle ? 1 : 0)
                 .allowsHitTesting(fabScrollIdle)
                 .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
             }
         }
         .background(theme.surface)
-        .navigationTitle("報修詳情")
+        .navigationTitle(ipadEmbedded ? "" : "報修詳情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarBackground(ipadEmbedded ? .hidden : .automatic, for: .navigationBar)
         .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             if primaryTab == .detail, model.repair != nil {

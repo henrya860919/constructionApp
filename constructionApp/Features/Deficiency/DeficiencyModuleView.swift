@@ -197,6 +197,8 @@ private struct PendingDefectParentTarget: Identifiable {
 
 // MARK: - Module shell
 
+/// 缺失模組 root view（iPhone / compact 路徑）。
+/// iPad regular 路徑由 IPadShellView 直接呼叫 DefectListView 與 DefectDetailView 在三欄 NavigationSplitView 的 content / detail 欄分開呈現，不會用到本 view。
 struct DeficiencyModuleView: View {
     @Environment(\.fieldTheme) private var theme
     @Environment(SessionManager.self) private var session
@@ -225,6 +227,7 @@ struct DeficiencyModuleView: View {
 
 struct DefectListView: View {
     @Environment(\.fieldTheme) private var theme
+    @Environment(\.horizontalSizeClass) private var hSize
     enum ListChrome {
         case main
         case searchSession
@@ -234,6 +237,10 @@ struct DefectListView: View {
     @Bindable var model: DefectListViewModel
     @Binding var fabScrollIdle: Bool
     var listChrome: ListChrome = .main
+    /// iPad 三欄式樣板使用：當提供時，點選列表 item 改為呼叫 closure（讓父層更新 detail 欄 selection），不再走 NavigationStack push 到 `DefectDetailView`。compact／iPhone 維持 nil → push 既有行為。
+    var onSelectDefect: ((String) -> Void)? = nil
+    /// iPad 三欄式高亮：當前在 detail 欄顯示的 defect id（用於 list item 加上 selected 視覺）。
+    var selectedDefectId: String? = nil
 
     @Environment(FieldOutboxStore.self) private var outbox
     @Environment(SessionManager.self) private var session
@@ -396,7 +403,8 @@ struct DefectListView: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 20)
-            .padding(.bottom, TacticalGlassTheme.fieldFABBottomInset)
+            /// iPhone 用大 inset 避開 FloatingTabBar；iPad 三欄式 content 欄沒 tab bar，FAB 直接靠近底部 24pt。判斷依據用 `onSelectDefect != nil`（只在 iPad 路徑由 IPadShellView 傳入）— SwiftUI 在 NavigationSplitView 子欄位會把 horizontalSizeClass 識別為 compact，所以不能靠 hSize 判斷。
+            .padding(.bottom, onSelectDefect != nil ? 24 : TacticalGlassTheme.fieldFABBottomInset)
             .opacity(fabScrollIdle ? 1 : 0)
             .allowsHitTesting(fabScrollIdle)
             .animation(.easeInOut(duration: 0.2), value: fabScrollIdle)
@@ -494,9 +502,20 @@ struct DefectListView: View {
                 }
                 ForEach(model.items) { item in
                     Button {
-                        navigateToDefectId = item.id
+                        if let onSelect = onSelectDefect {
+                            onSelect(item.id)
+                        } else {
+                            navigateToDefectId = item.id
+                        }
                     } label: {
                         defectCard(item)
+                            .overlay {
+                                /// iPad 三欄式：被選中的 item 加 12pt 圓角主色描邊（compact 模式 selectedDefectId 為 nil，無視覺改變）。
+                                if selectedDefectId == item.id {
+                                    RoundedRectangle(cornerRadius: TacticalGlassTheme.cornerRadius, style: .continuous)
+                                        .stroke(theme.primary, lineWidth: 2)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
@@ -836,6 +855,8 @@ struct DefectDetailView: View {
     let projectId: String
     let defectId: String
     let accessToken: String
+    /// iPad 三欄式內嵌模式：隱藏 navigation bar 標題與背景橫條（detail 永遠在右欄、使用者已從 Sidebar 知道在哪，也不需要重複的「缺失詳情」title）。compact／push 模式預設 false 維持既有 chrome。
+    var ipadEmbedded: Bool = false
 
     @State private var model = DefectDetailViewModel()
     @State private var primaryTab: DefectDetailPrimaryTab = .detail
@@ -917,9 +938,10 @@ struct DefectDetailView: View {
             }
         }
         .background(theme.surface)
-        .navigationTitle("缺失詳情")
+        .navigationTitle(ipadEmbedded ? "" : "缺失詳情")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+        .toolbarBackground(ipadEmbedded ? .hidden : .automatic, for: .navigationBar)
         .toolbarColorScheme(colorScheme, for: .navigationBar)
         .toolbar {
             if primaryTab == .detail, model.defect != nil {

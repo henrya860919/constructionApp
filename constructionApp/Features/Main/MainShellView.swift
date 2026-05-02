@@ -2,6 +2,10 @@
 //  MainShellView.swift
 //  constructionApp
 //
+//  Adaptive Shell：依 `horizontalSizeClass` 自動分流 — compact 走 FloatingTabBar（iPhone、iPad 1/2 分割、Stage Manager 窄視窗），regular 走 NavigationSplitView（iPad 全螢幕）。
+//
+//  狀態（`tab`、`syncAcknowledgementBanner`）與同步邏輯（outbox sync、scenePhase、network reachability）統一由本層持有，子 layout 僅負責呈現；旋轉／視窗縮放切換 size class 時模組選取與 banner 不會丟失。
+//
 
 import SwiftUI
 
@@ -12,43 +16,17 @@ struct MainShellView: View {
     @Environment(FieldOutboxStore.self) private var outbox
     @Environment(FieldNetworkMonitor.self) private var network
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var hSize
+
     @State private var tab: FieldModuleTab = .selfInspection
     @State private var syncAcknowledgementBanner: String?
 
     var body: some View {
-        /// Tab Bar 必須在 `NavigationStack` 的根內容樹裡（與模組同層），`push` 詳情／設定時才會被蓋住；若放在 Stack 外層 `ZStack` 則會永遠浮在所有頁面上。
-        NavigationStack {
-            VStack(spacing: 0) {
-                FieldOfflineBanner()
-                ZStack(alignment: .bottom) {
-                    ZStack {
-                        ForEach(FieldModuleTab.allCases) { module in
-                            if tab == module {
-                                moduleRootView(for: module)
-                                    .transition(AppViewMotion.moduleContent)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    FloatingTabBar(selection: $tab)
-                }
-                .animation(AppViewMotion.moduleTab, value: tab)
-            }
-            .background(theme.surface)
-            .navigationTitle(session.selectedProjectName ?? "專案")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
-            .toolbarColorScheme(colorScheme, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        FieldSettingsView()
-                    } label: {
-                        AccountToolbarAvatar(user: session.currentUser)
-                    }
-                    .buttonStyle(.plain)
-                }
+        Group {
+            if hSize == .regular {
+                IPadShellView(selection: $tab)
+            } else {
+                MainShellCompactView(selection: $tab)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -119,6 +97,56 @@ struct MainShellView: View {
                 try? await Task.sleep(for: .seconds(3.5))
                 if syncAcknowledgementBanner == shown {
                     withAnimation { syncAcknowledgementBanner = nil }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Compact (iPhone / 窄分割)
+
+/// 既有 iPhone 體驗：頂部離線橫幅 → 模組內容（ZStack 切換）→ 底部 FloatingTabBar；右上 avatar push 到 Settings。
+/// 與 iPad 版邏輯差異：模組切換用底部浮動 Tab、Settings 用 navigation push 而非 sheet。
+private struct MainShellCompactView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.fieldTheme) private var theme
+    @Environment(SessionManager.self) private var session
+
+    @Binding var selection: FieldModuleTab
+
+    var body: some View {
+        /// Tab Bar 必須在 `NavigationStack` 的根內容樹裡（與模組同層），`push` 詳情／設定時才會被蓋住；若放在 Stack 外層 `ZStack` 則會永遠浮在所有頁面上。
+        NavigationStack {
+            VStack(spacing: 0) {
+                FieldOfflineBanner()
+                ZStack(alignment: .bottom) {
+                    ZStack {
+                        ForEach(FieldModuleTab.allCases) { module in
+                            if selection == module {
+                                moduleRootView(for: module)
+                                    .transition(AppViewMotion.moduleContent)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    FloatingTabBar(selection: $selection)
+                }
+                .animation(AppViewMotion.moduleTab, value: selection)
+            }
+            .background(theme.surface)
+            .navigationTitle(session.selectedProjectName ?? "專案")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(theme.surfaceContainerLow, for: .navigationBar)
+            .toolbarColorScheme(colorScheme, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        FieldSettingsView()
+                    } label: {
+                        AccountToolbarAvatar(user: session.currentUser)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
